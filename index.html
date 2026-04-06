@@ -301,6 +301,11 @@
   @keyframes fadeUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   .scan-flash { animation: flash 0.25s ease; }
   @keyframes flash { 0%,100% { background: var(--surface); } 50% { background: var(--accent-light); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fb-saving { position: fixed; top: 70px; right: 1rem; background: var(--accent); color: white;
+    font-size: 0.72rem; font-weight: 600; padding: 5px 12px; border-radius: 20px;
+    display: none; align-items: center; gap: 6px; z-index: 500; box-shadow: var(--shadow); }
+  .fb-saving.show { display: flex; animation: fadeIn 0.2s ease; }
 
   /* ── CADASTROS TABS ── */
   .sub-tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; background: var(--surface2); padding: 4px; border-radius: 12px; width: fit-content; border: 1px solid var(--border); }
@@ -619,7 +624,10 @@
           <div class="dep-section">
             <div class="section-label">Confirmar local onde o bem está</div>
             <div class="dep-chips" id="dep-chips"></div>
-            <div class="dep-custom">
+            <div style="margin-top:4px">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.75rem;color:var(--text-muted)" onclick="document.getElementById('dep-custom-wrap').style.display='flex'">+ Outro local</button>
+            </div>
+            <div id="dep-custom-wrap" class="dep-custom" style="display:none">
               <input type="text" id="dep-new" placeholder="Outro local (ex: COZINHA, SALA DE ORAÇÃO...)">
               <button class="btn btn-sm btn-outline" onclick="addDep()">+ Adicionar</button>
             </div>
@@ -1042,25 +1050,143 @@
 </div>
 
 <div class="toast" id="toast"><span id="t-msg"></span></div>
+<div class="fb-saving" id="fb-saving">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin 0.8s linear infinite"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0"/></svg>
+  Salvando...
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, writeBatch, deleteDoc, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAyfIk5kE25pawnooylEiOuD23cCMa5r1M",
+  authDomain: "patrimonio-ccb-3be2a.firebaseapp.com",
+  projectId: "patrimonio-ccb-3be2a",
+  storageBucket: "patrimonio-ccb-3be2a.firebasestorage.app",
+  messagingSenderId: "79154407240",
+  appId: "1:79154407240:web:9a3fac00f907a86d96357d"
+};
+
+const app = initializeApp(firebaseConfig);
+const firestore = getFirestore(app);
+
+// ── Funções globais do Firestore expostas para o script principal ──
+window._firestore = firestore;
+window._fsDoc = doc;
+window._fsSetDoc = setDoc;
+window._fsGetDoc = getDoc;
+window._fsOnSnapshot = onSnapshot;
+window._fsCollection = collection;
+window._fsWriteBatch = writeBatch;
+window._fsDeleteDoc = deleteDoc;
+window._fsQuery = query;
+
+// Listener em tempo real no documento principal
+function listenDB() {
+  const ref = doc(firestore, 'patrimonio', 'main');
+  window._fsUnsubscribe = onSnapshot(ref, (snap) => {
+    if(snap.exists()) {
+      const data = snap.data();
+      // Só atualiza se veio de outra origem (evita loop)
+      if(data && data.bens) {
+        const prev = JSON.stringify({igrejas: window.db?.igrejas, dependencias: window.db?.dependencias, bens: window.db?.bens, nextId: window.db?.nextId});
+        const next = JSON.stringify({igrejas: data.igrejas, dependencias: data.dependencias, bens: data.bens, nextId: data.nextId});
+        if(prev !== next) {
+          // Atualiza referência global e local
+          Object.assign(window.db, data);
+          if(window._dbReady) {
+            window.refreshAll && window.refreshAll();
+            window.renderBens && window.renderBens();
+            window.renderIgGrid && window.renderIgGrid();
+            window.renderDepGrid && window.renderDepGrid();
+            window.renderRel && window.renderRel();
+            window.buildChurchList && window.buildChurchList();
+          }
+        }
+      }
+    }
+  });
+}
+
+// Aguarda o script principal inicializar
+window._firestoreReady = false;
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(listenDB, 100);
+});
+</script>
+
 <script>
 // ═══════════════════════════════════════════════
-// DATA
+// LOADING OVERLAY
 // ═══════════════════════════════════════════════
-const DB_KEY = 'patrimonio_igreja_db';
-function saveDB() {
-  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) { console.warn('Erro ao salvar:', e); }
-}
-function loadDB() {
+(function() {
+  const overlay = document.createElement('div');
+  overlay.id = 'fb-loading';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg,#f4f6fb);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:Plus Jakarta Sans,sans-serif';
+  overlay.innerHTML = `
+    <div style="width:44px;height:44px;border:3px solid #e2e7f0;border-top-color:#3b5bdb;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+    <p style="color:#7a8aab;font-size:0.85rem;font-weight:500">Conectando ao banco de dados...</p>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+  document.body.appendChild(overlay);
+})();
+
+// ═══════════════════════════════════════════════
+// DATA — Firebase Firestore
+// ═══════════════════════════════════════════════
+let db = { igrejas:[], dependencias:[], bens:[], nextId:1 };
+let _saveTimeout = null;
+window.db = db;
+window._dbReady = false;
+
+async function loadDB() {
   try {
-    const raw = localStorage.getItem(DB_KEY);
-    if(raw) { const parsed = JSON.parse(raw); if(parsed && parsed.bens) return parsed; }
-  } catch(e) { console.warn('Erro ao carregar:', e); }
-  return { igrejas:[], dependencias:[], bens:[], nextId:1 };
+    const ref = window._fsDoc(window._firestore, 'patrimonio', 'main');
+    const snap = await window._fsGetDoc(ref);
+    if(snap.exists()) {
+      const data = snap.data();
+      if(data && data.bens) {
+        db = data;
+        window.db = db;
+      }
+    }
+  } catch(e) { console.warn('Erro ao carregar do Firestore:', e); }
 }
-let db = loadDB();
+
+let _savingTimer = null;
+function _showSaving(v) {
+  const el = document.getElementById('fb-saving');
+  if(el) { if(v) el.classList.add('show'); else el.classList.remove('show'); }
+}
+function saveDB() {
+  // Debounce: agrupa escritas rápidas em uma só
+  clearTimeout(_saveTimeout);
+  _showSaving(true);
+  _saveTimeout = setTimeout(async () => {
+    try {
+      const ref = window._fsDoc(window._firestore, 'patrimonio', 'main');
+      await window._fsSetDoc(ref, {
+        igrejas: db.igrejas,
+        dependencias: db.dependencias,
+        bens: db.bens,
+        nextId: db.nextId,
+        updatedAt: new Date().toISOString()
+      });
+      // Atualiza referência global
+      window.db = db;
+    } catch(e) {
+      console.warn('Erro ao salvar no Firestore:', e);
+      toast('Erro ao salvar. Verifique a conexão.', 'err');
+    } finally {
+      _showSaving(false);
+    }
+  }, 400);
+}
+
 let editId = null;
 let editIgId = null;
 let scanned = null;
@@ -1082,7 +1208,16 @@ function getChurchDeps() {
 function fmtBRL(v){ return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function genBC(cod){ return cod.replace(/[^0-9]/g,'').padStart(13,'0').slice(-13)||String(Math.floor(Math.random()*9000000000000)+1000000000000); }
 
-let selectedChurch = localStorage.getItem('patrimonio_igreja_church') || '';
+let selectedChurch = '';
+// Expõe funções para o listener em tempo real do Firebase
+window._exposeFns = function() {
+  window.refreshAll = refreshAll;
+  window.renderBens = renderBens;
+  window.renderIgGrid = renderIgGrid;
+  window.renderDepGrid = renderDepGrid;
+  window.renderRel = renderRel;
+  window.buildChurchList = buildChurchList;
+};
 
 // ═══════════════════════════════════════════════
 // CHURCH DROPDOWN
@@ -1113,7 +1248,7 @@ function toggleChurchDropdown() {
 }
 function selectChurch(cod) {
   selectedChurch=cod;
-  localStorage.setItem('patrimonio_igreja_church', cod);
+  
   const ig=db.igrejas.find(x=>x.codigo===cod);
   document.getElementById('church-btn-text').textContent=ig?ig.nome:'Selecione a Igreja...';
   document.getElementById('church-dropdown').classList.remove('open');
@@ -1237,11 +1372,28 @@ function doScan() {
   if(bem.invStatus==='confirmado'){c3.className='chk ok';c3i.textContent='✅';c3s.textContent='Confirmado em: '+bem.invDep;}
   else if(bem.invStatus==='problema'){c3.className='chk warn';c3i.textContent='⚠️';c3s.textContent='Problema registrado';}
   else{c3.className='chk';c3i.textContent='📍';c3s.textContent='Selecione abaixo';}
-  // deps
+  // deps — auto-detecta dependência do cadastro quando não há invDep
   const deps=getChurchDeps();
   const ctx=document.getElementById('dep-ctx-sel').value;
   const chips=document.getElementById('dep-chips');
-  chips.innerHTML=deps.map(d=>`<div class="dep-chip${bem.invDep===d?' sel':''}${d===ctx?' current':''}" onclick="selDep(this,'${d}')">${d}</div>`).join('');
+  // Auto-pré-seleção: usa invDep se já definido, senão usa dependencia do cadastro
+  const autoSel = bem.invDep || bem.dependencia || '';
+  if(autoSel && !bem.invDep) { bem.invDep = autoSel; }
+  chips.innerHTML=deps.map(d=>`<div class="dep-chip${autoSel===d?' sel':''}${d===ctx?' current':''}" onclick="selDep(this,'${d}')">${d}</div>`).join('');
+  // Se a dependência não está na lista de chips, adiciona chip extra
+  if(autoSel && !deps.includes(autoSel)) {
+    chips.innerHTML += `<div class="dep-chip sel" onclick="selDep(this,'${autoSel.replace(/'/g,"\'")}')">${autoSel}</div>`;
+  }
+  // Mostra/oculta input manual: só exibe se não houver auto-detecção
+  const customWrap = document.getElementById('dep-custom-wrap');
+  if(customWrap) customWrap.style.display = autoSel ? 'none' : 'flex';
+  // Atualiza chk3 se já tem dep auto-detectada
+  if(autoSel && bem.invStatus!=='confirmado' && bem.invStatus!=='problema') {
+    const c3=document.getElementById('chk3');
+    c3.className='chk ok';
+    document.getElementById('chk3-icon').textContent='📍';
+    document.getElementById('chk3-sub').textContent='Auto-detectado: '+autoSel;
+  }
   document.getElementById('obs').value=bem.invObs||'';
   show('s-empty',false);show('s-notfound',false);show('s-found',true);
   document.getElementById('scan-card').classList.add('scan-flash');
@@ -2033,8 +2185,18 @@ document.getElementById('cam-overlay').addEventListener('click', function(e) {
 });
 
 // ─────────────────────────────────────────────────────────────────
-function init() {
-  // Restaura a igreja selecionada salva
+async function init() {
+  // Aguarda Firebase estar disponível
+  let tries = 0;
+  while(!window._firestore && tries < 60) { await new Promise(r=>setTimeout(r,100)); tries++; }
+
+  // Carrega dados do Firestore
+  await loadDB();
+
+  // Sincroniza referência global
+  db = window.db;
+
+  // Restaura a igreja
   if(selectedChurch && !db.igrejas.find(x=>x.codigo===selectedChurch)) selectedChurch='';
   if(!selectedChurch && db.igrejas.length) selectedChurch=db.igrejas[0].codigo;
   const igAtiva=db.igrejas.find(x=>x.codigo===selectedChurch);
@@ -2044,6 +2206,14 @@ function init() {
   refreshAll(); renderBens(); renderIgGrid(); renderDepGrid(); renderRel();
   show('s-empty',true); show('s-notfound',false); show('s-found',false);
   document.getElementById('bc-input').focus();
+
+  // Remove overlay de carregamento
+  const ov = document.getElementById('fb-loading');
+  if(ov) { ov.style.opacity='0'; ov.style.transition='opacity 0.3s'; setTimeout(()=>ov.remove(),300); }
+
+  // Marca DB como pronto e expõe funções para o listener em tempo real
+  window._dbReady = true;
+  if(window._exposeFns) window._exposeFns();
 }
 init();
 </script>
