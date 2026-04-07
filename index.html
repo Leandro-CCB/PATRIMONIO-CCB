@@ -533,21 +533,7 @@
     </div>
     <h1>Patrimônio<span>Igreja</span></h1>
   </div>
-  <div class="church-selector-wrap">
-    <span class="church-selector-label">Igreja Ativa:</span>
-    <div class="church-filter-container" id="church-filter-container">
-      <button class="church-filter-btn" id="church-filter-btn" onclick="toggleChurchDropdown()">
-        <span id="church-btn-text">Selecione a Igreja...</span>
-        <span class="caret">▼</span>
-      </button>
-      <div class="church-dropdown" id="church-dropdown">
-        <div class="church-search-wrap">
-          <input type="text" class="church-search-input" placeholder="Buscar por nome ou código..." id="church-search" oninput="filterChurchList(this.value)">
-        </div>
-        <div class="church-list" id="church-list-items"></div>
-      </div>
-    </div>
-  </div>
+  <!-- church selector removed -->
 </header>
 
 <div class="tabs">
@@ -711,6 +697,9 @@
     <select class="filter-select" id="s-dep" onchange="renderBens()">
       <option value="">Todas as dependências</option>
     </select>
+    <select class="filter-select" id="s-ig" onchange="renderBens()">
+      <option value="">Todas as igrejas</option>
+    </select>
   </div>
 
   <div class="table-wrap">
@@ -720,6 +709,7 @@
           <th>Inv.</th>
           <th>Código</th>
           <th>Nome</th>
+          <th>Igreja</th>
           <th>Dependência</th>
           <th>Vl. Aquisição</th>
           <th>Vl. Deprec.</th>
@@ -1309,23 +1299,26 @@ function toast(msg,type='ok') {
 // REFRESH ALL
 // ═══════════════════════════════════════════════
 function refreshAll() {
-  const bens=getChurchBens();
+  const bens=db.bens; // todos os bens, sem filtro de igreja
   document.getElementById('cnt-bens').textContent=bens.length;
-  // Deps in inv
-  const deps=getChurchDeps();
+  // Deps in inv — todas as dependências de todas as igrejas
+  const allDeps=[...new Set([
+    ...db.dependencias.map(d=>d.nome),
+    ...db.bens.filter(b=>b.dependencia).map(b=>b.dependencia)
+  ])].sort();
   const sel=document.getElementById('dep-ctx-sel');
   const cv=sel.value;
   sel.innerHTML='<option value="">— Todas —</option>';
-  deps.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===cv)o.selected=true; sel.appendChild(o); });
-  // Filter dep
+  allDeps.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===cv)o.selected=true; sel.appendChild(o); });
+  // Filter dep (aba Bens)
   const sdep=document.getElementById('s-dep');
   const sdepv=sdep.value;
   sdep.innerHTML='<option value="">Todas as dependências</option>';
-  deps.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===sdepv)o.selected=true; sdep.appendChild(o); });
-  // Stats
+  allDeps.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===sdepv)o.selected=true; sdep.appendChild(o); });
+  // Stats — todos os bens
   const ok=bens.filter(b=>b.invStatus==='confirmado').length;
   const prob=bens.filter(b=>b.invStatus==='problema').length;
-  const pend=bens.filter(b=>b.invStatus==='pendente').length;
+  const pend=bens.filter(b=>!b.invStatus||b.invStatus==='pendente').length;
   const total=bens.length;
   document.getElementById('p-ok').textContent=ok;
   document.getElementById('p-prob').textContent=prob;
@@ -1334,8 +1327,8 @@ function refreshAll() {
   const pct=total?Math.round((ok+prob)/total*100):0;
   document.getElementById('prog-pct').textContent=pct+'%';
   document.getElementById('prog-fill').style.width=pct+'%';
-  document.getElementById('bens-sub').textContent=`${total} bens · ${ok} confirmados · ${pend} pendentes`;
-  // Totals
+  document.getElementById('bens-sub').textContent=`${total} bens no total · ${ok} confirmados · ${pend} pendentes`;
+  // Totals (aba Bens)
   const totAq=bens.reduce((s,b)=>s+(parseFloat(b.valorAquisicao)||0),0);
   const totDep=bens.reduce((s,b)=>s+(parseFloat(b.valorDepreciacao)||0),0);
   const totAt=bens.reduce((s,b)=>s+(parseFloat(b.valorAtual)||0),0);
@@ -1354,7 +1347,16 @@ function bcLive(v) {
   if(!v||v.length<2){sug.style.display='none';return;}
   const hits=db.bens.filter(b=>b.codigo.includes(v)||b.barcode.includes(v)||(b.nome&&b.nome.toLowerCase().includes(v.toLowerCase()))).slice(0,5);
   if(!hits.length){sug.style.display='none';return;}
-  sug.innerHTML=hits.map(b=>`<div class="sug-item" onclick="selectSug('${b.barcode}')"><span>${b.nome}</span><span style="font-family:monospace;font-size:0.72rem;color:var(--text-muted)">${b.codigo}</span></div>`).join('');
+  sug.innerHTML=hits.map(b=>{
+    const igNome=db.igrejas.find(x=>x.codigo===b.localidade)?.nome||b.localidade||'';
+    return `<div class="sug-item" onclick="selectSug('${b.barcode}')">
+      <span>${b.nome}</span>
+      <span style="display:flex;gap:8px;align-items:center">
+        ${igNome?`<span style="font-size:0.68rem;background:var(--accent-light);color:var(--accent);padding:1px 7px;border-radius:5px;font-weight:600;white-space:nowrap">${igNome}</span>`:''}
+        <span style="font-family:monospace;font-size:0.72rem;color:var(--text-muted)">${b.codigo}</span>
+      </span>
+    </div>`;
+  }).join('');
   sug.style.display='flex';
 }
 function selectSug(bc) { document.getElementById('bc-input').value=bc; document.getElementById('live-sug').style.display='none'; doScan(); }
@@ -1444,7 +1446,7 @@ function problema() {
 }
 function resetInv() {
   if(!confirm('Reiniciar inventário? Todos os status serão apagados.'))return;
-  getChurchBens().forEach(b=>{b.invStatus='pendente';b.invDep='';b.invObs='';});
+  db.bens.forEach(b=>{b.invStatus='pendente';b.invDep='';b.invObs='';});
   saveDB(); refreshAll(); renderBens(); toast('Inventário reiniciado.');
 }
 function cadastroRapido() {
@@ -1461,7 +1463,18 @@ function renderBens() {
   const st=document.getElementById('s-st')?.value||'';
   const inv=document.getElementById('s-inv')?.value||'';
   const dep=document.getElementById('s-dep')?.value||'';
-  let bens=getChurchBens().filter(b=>{
+  const igFilter=document.getElementById('s-ig')?.value||'';
+  // Populate igreja filter dropdown
+  const igSel=document.getElementById('s-ig');
+  if(igSel){
+    const curIgVal=igSel.value;
+    igSel.innerHTML='<option value="">Todas as igrejas</option>';
+    db.igrejas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===curIgVal)o.selected=true;igSel.appendChild(o);});
+    if(igFilter)igSel.value=igFilter;
+  }
+  // Usa todos os bens do banco (não filtra por igreja ativa aqui)
+  let bens=db.bens.filter(b=>{
+    if(igFilter&&b.localidade!==igFilter)return false;
     if(st&&b.status!==st)return false;
     if(dep&&b.dependencia!==dep)return false;
     if(inv==='sem-dep')return !b.dependencia;
@@ -1476,11 +1489,14 @@ function renderBens() {
   const lbl={confirmado:'Confirmado',problema:'Problema',pendente:'Pendente'};
   const dotCls={confirmado:'id-ok',problema:'id-prob',pendente:'id-pend'};
   const stBadge={Ativo:'bg',Depreciado:'by',Baixado:'bm'};
-  document.getElementById('bens-tbody').innerHTML=slice.map(b=>`
+  document.getElementById('bens-tbody').innerHTML=slice.map(b=>{
+    const igNome=db.igrejas.find(x=>x.codigo===b.localidade)?.nome||b.localidade||'—';
+    return `
     <tr>
       <td><span class="inv-dot ${dotCls[b.invStatus]||'id-pend'}" title="${lbl[b.invStatus]||'Pendente'}"></span></td>
       <td><span class="tag">${b.codigo}</span></td>
-      <td style="font-weight:500;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.nome}</td>
+      <td style="font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.nome}</td>
+      <td style="font-size:0.75rem;color:var(--accent);font-weight:600;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${igNome}">${igNome}</td>
       <td style="font-size:0.78rem;color:var(--text-muted)">${b.dependencia||'<span style="color:var(--red);font-size:0.75rem">sem dep.</span>'}</td>
       <td class="val-cell">${fmtBRL(b.valorAquisicao)}</td>
       <td class="val-deprec">${fmtBRL(b.valorDepreciacao)}</td>
@@ -1492,7 +1508,7 @@ function renderBens() {
           <button class="btn btn-ghost btn-sm" onclick="delBem(${b.id})" title="Remover">🗑️</button>
         </div>
       </td>
-    </tr>`).join('');
+    </tr>`;}).join('');
   document.getElementById('pag-info').textContent=`${total} bens · Página ${curPage} de ${pages}`;
   const pb=document.getElementById('pag-btns'); pb.innerHTML='';
   for(let i=1;i<=pages;i++){
@@ -2196,12 +2212,9 @@ async function init() {
   // Sincroniza referência global
   db = window.db;
 
-  // Restaura a igreja
+  // Restaura a igreja (mantém selectedChurch para compatibilidade interna)
   if(selectedChurch && !db.igrejas.find(x=>x.codigo===selectedChurch)) selectedChurch='';
   if(!selectedChurch && db.igrejas.length) selectedChurch=db.igrejas[0].codigo;
-  const igAtiva=db.igrejas.find(x=>x.codigo===selectedChurch);
-  if(igAtiva) document.getElementById('church-btn-text').textContent=igAtiva.nome;
-  buildChurchList();
   impRefreshChurchSel();
   refreshAll(); renderBens(); renderIgGrid(); renderDepGrid(); renderRel();
   show('s-empty',true); show('s-notfound',false); show('s-found',false);
