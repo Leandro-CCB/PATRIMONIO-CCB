@@ -593,6 +593,7 @@
         <div id="s-found" style="display:none">
           <div class="result-name" id="r-nome">—</div>
           <div class="result-code" id="r-code">—</div>
+          <div id="r-igreja" style="font-size:0.78rem;font-weight:600;color:var(--accent);background:var(--accent-light);padding:4px 10px;border-radius:6px;margin-bottom:10px;display:none"></div>
           <div class="checks">
             <div class="chk ok" id="chk1">
               <div class="chk-icon">✅</div>
@@ -660,6 +661,10 @@
       <p id="bens-sub">—</p>
     </div>
     <div style="display:flex;gap:8px">
+      <button class="btn btn-danger btn-sm" onclick="openClearBensModal()" title="Limpar lançamentos">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6"/><path d="M14,11v6"/><path d="M9,6V4a1,1,0,0,1,1-1h4a1,1,0,0,1,1,1v2"/></svg>
+        Limpar Bens
+      </button>
       <button class="btn btn-outline btn-sm" onclick="openModal('modal-import')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Importar XLS
@@ -674,6 +679,7 @@
     <div class="total-card"><div class="tc-label">Vl. Aquisição Total</div><div class="tc-val blue" id="tot-aq">R$ 0,00</div></div>
     <div class="total-card"><div class="tc-label">Vl. Depreciação Total</div><div class="tc-val" id="tot-dep">R$ 0,00</div></div>
     <div class="total-card"><div class="tc-label">Vl. Atual Total</div><div class="tc-val green" id="tot-at">R$ 0,00</div></div>
+    <div class="total-card" id="tot-count-card" style="display:none"><div class="tc-label" id="tot-count-label">Qtd. Filtrada</div><div class="tc-val blue" id="tot-count">0</div></div>
   </div>
 
   <div class="filter-bar">
@@ -926,6 +932,7 @@
         <div class="field"><label>Código do Bem *</label><input type="text" id="b-cod" placeholder="Ex: 21-0974 / 000025"></div>
         <div class="field"><label>Código de Barras</label><input type="text" id="b-bc" placeholder="Gerado automaticamente"></div>
         <div class="field form-full"><label>Dependência</label><input type="text" id="b-dep" placeholder="Ex: SALÃO DE CULTO, COZINHA..."></div>
+        <div class="field form-full"><label>Igreja *</label><select id="b-ig"></select></div>
         <div class="field"><label>Fornecedor</label><input type="text" id="b-forn"></div>
         <div class="field"><label>Nº Documento / NF</label><input type="text" id="b-doc"></div>
         <div class="field"><label>Data de Aquisição</label><input type="date" id="b-dt"></div>
@@ -1013,6 +1020,20 @@
   </div>
 </div>
 
+<!-- MODAL LIMPAR BENS -->
+<div class="modal-overlay" id="modal-clear-bens">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3 style="color:var(--red)">🗑️ Limpar Bens</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-clear-bens')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="clear-bens-body"></div>
+    </div>
+    <div class="modal-footer" id="clear-bens-footer"></div>
+  </div>
+</div>
+
 <!-- ══ CÂMERA MODAL ══ -->
 <div class="cam-overlay" id="cam-overlay">
   <div class="cam-modal">
@@ -1080,6 +1101,8 @@ window._fsQuery = query;
 function listenDB() {
   const ref = doc(firestore, 'patrimonio', 'main');
   window._fsUnsubscribe = onSnapshot(ref, (snap) => {
+    // Se há uma gravação pendente, ignora o snapshot para evitar sobrescrever dados locais
+    if(window._savePending) return;
     if(snap.exists()) {
       const data = snap.data();
       // Só atualiza se veio de outra origem (evita loop)
@@ -1140,7 +1163,8 @@ async function loadDB() {
     if(snap.exists()) {
       const data = snap.data();
       if(data && data.bens) {
-        db = data;
+        // Usa Object.assign para manter a mesma referência de objeto
+        Object.assign(db, data);
         window.db = db;
       }
     }
@@ -1156,16 +1180,19 @@ function saveDB() {
   // Debounce: agrupa escritas rápidas em uma só
   clearTimeout(_saveTimeout);
   _showSaving(true);
+  window._savePending = true; // bloqueia o listener enquanto gravação está pendente
   _saveTimeout = setTimeout(async () => {
     try {
       const ref = window._fsDoc(window._firestore, 'patrimonio', 'main');
-      await window._fsSetDoc(ref, {
-        igrejas: db.igrejas,
-        dependencias: db.dependencias,
-        bens: db.bens,
+      // Captura snapshot dos dados AGORA para evitar race condition
+      const payload = {
+        igrejas: JSON.parse(JSON.stringify(db.igrejas)),
+        dependencias: JSON.parse(JSON.stringify(db.dependencias)),
+        bens: JSON.parse(JSON.stringify(db.bens)),
         nextId: db.nextId,
         updatedAt: new Date().toISOString()
-      });
+      };
+      await window._fsSetDoc(ref, payload);
       // Atualiza referência global
       window.db = db;
     } catch(e) {
@@ -1173,6 +1200,8 @@ function saveDB() {
       toast('Erro ao salvar. Verifique a conexão.', 'err');
     } finally {
       _showSaving(false);
+      // Libera o listener 1s após a gravação para deixar o Firestore processar
+      setTimeout(() => { window._savePending = false; }, 1000);
     }
   }, 400);
 }
@@ -1214,6 +1243,7 @@ window._exposeFns = function() {
 // ═══════════════════════════════════════════════
 function buildChurchList(filter='') {
   const list = document.getElementById('church-list-items');
+  if(!list) return; // dropdown não presente no DOM
   const churches = db.igrejas.filter(ig=>
     !filter || ig.nome.toLowerCase().includes(filter.toLowerCase()) || ig.codigo.toLowerCase().includes(filter.toLowerCase())
   );
@@ -1229,24 +1259,26 @@ function buildChurchList(filter='') {
 function filterChurchList(v) { buildChurchList(v); }
 function toggleChurchDropdown() {
   const dd=document.getElementById('church-dropdown');
+  if(!dd) return;
   dd.classList.toggle('open');
   if(dd.classList.contains('open')) {
     buildChurchList();
-    document.getElementById('church-search').value='';
-    document.getElementById('church-search').focus();
+    const s=document.getElementById('church-search');
+    if(s){s.value='';s.focus();}
   }
 }
 function selectChurch(cod) {
   selectedChurch=cod;
-  
   const ig=db.igrejas.find(x=>x.codigo===cod);
-  document.getElementById('church-btn-text').textContent=ig?ig.nome:'Selecione a Igreja...';
-  document.getElementById('church-dropdown').classList.remove('open');
+  const btn=document.getElementById('church-btn-text');
+  if(btn) btn.textContent=ig?ig.nome:'Selecione a Igreja...';
+  const dd=document.getElementById('church-dropdown');
+  if(dd) dd.classList.remove('open');
   refreshAll(); renderBens(); renderIgGrid(); renderDepGrid(); renderRel();
 }
 document.addEventListener('click',e=>{
   const c=document.getElementById('church-filter-container');
-  if(c&&!c.contains(e.target)) document.getElementById('church-dropdown').classList.remove('open');
+  if(c&&!c.contains(e.target)){const dd=document.getElementById('church-dropdown');if(dd)dd.classList.remove('open');}
 });
 
 // ═══════════════════════════════════════════════
@@ -1328,13 +1360,7 @@ function refreshAll() {
   document.getElementById('prog-pct').textContent=pct+'%';
   document.getElementById('prog-fill').style.width=pct+'%';
   document.getElementById('bens-sub').textContent=`${total} bens no total · ${ok} confirmados · ${pend} pendentes`;
-  // Totals (aba Bens)
-  const totAq=bens.reduce((s,b)=>s+(parseFloat(b.valorAquisicao)||0),0);
-  const totDep=bens.reduce((s,b)=>s+(parseFloat(b.valorDepreciacao)||0),0);
-  const totAt=bens.reduce((s,b)=>s+(parseFloat(b.valorAtual)||0),0);
-  document.getElementById('tot-aq').textContent=fmtBRL(totAq);
-  document.getElementById('tot-dep').textContent=fmtBRL(totDep);
-  document.getElementById('tot-at').textContent=fmtBRL(totAt);
+  // Totals são atualizados pelo renderBens com base nos filtros ativos
 }
 
 // ═══════════════════════════════════════════════
@@ -1366,8 +1392,11 @@ function doScan() {
   const bem=db.bens.find(b=>b.barcode===v||b.codigo===v);
   if(!bem){show('s-empty',false);show('s-notfound',true);show('s-found',false);return;}
   scanned=bem;
+  const igNomeScanned=db.igrejas.find(x=>x.codigo===bem.localidade)?.nome||bem.localidade||'';
   document.getElementById('r-nome').textContent=bem.nome;
   document.getElementById('r-code').textContent=`${bem.codigo} · ${bem.barcode}`;
+  document.getElementById('r-igreja').textContent=igNomeScanned?`🏛️ ${igNomeScanned}`:'';
+  document.getElementById('r-igreja').style.display=igNomeScanned?'':'none';
   // check3
   const c3=document.getElementById('chk3'); c3.className='chk';
   const c3i=document.getElementById('chk3-icon'); const c3s=document.getElementById('chk3-sub');
@@ -1486,6 +1515,26 @@ function renderBens() {
   const pages=Math.max(1,Math.ceil(total/PER_PAGE));
   if(curPage>pages)curPage=1;
   const slice=bens.slice((curPage-1)*PER_PAGE,curPage*PER_PAGE);
+  // Atualiza totais com base nos bens filtrados
+  const filtTotAq=bens.reduce((s,b)=>s+(parseFloat(b.valorAquisicao)||0),0);
+  const filtTotDep=bens.reduce((s,b)=>s+(parseFloat(b.valorDepreciacao)||0),0);
+  const filtTotAt=bens.reduce((s,b)=>s+(parseFloat(b.valorAtual)||0),0);
+  document.getElementById('tot-aq').textContent=fmtBRL(filtTotAq);
+  document.getElementById('tot-dep').textContent=fmtBRL(filtTotDep);
+  document.getElementById('tot-at').textContent=fmtBRL(filtTotAt);
+  // Card de contagem por tipo quando há filtro ativo de busca ou igreja+dependência
+  const countCard=document.getElementById('tot-count-card');
+  const hasFilter=q||igFilter||dep||st||inv;
+  if(hasFilter){
+    const label=q?`"${q}"`:dep?`Dep: ${dep}`:igFilter?(db.igrejas.find(x=>x.codigo===igFilter)?.nome||igFilter):'Filtrado';
+    document.getElementById('tot-count-label').textContent=`Total — ${label}`;
+    document.getElementById('tot-count').textContent=total+' item'+(total!==1?'s':'');
+    countCard.style.display='block';
+  } else {
+    countCard.style.display='none';
+  }
+  // Ajusta grid de totais dinamicamente
+  document.getElementById('totals-bar').style.gridTemplateColumns=hasFilter?'repeat(4,1fr)':'repeat(3,1fr)';
   const lbl={confirmado:'Confirmado',problema:'Problema',pendente:'Pendente'};
   const dotCls={confirmado:'id-ok',problema:'id-prob',pendente:'id-pend'};
   const stBadge={Ativo:'bg',Depreciado:'by',Baixado:'bm'};
@@ -1520,6 +1569,62 @@ function renderBens() {
 }
 function editBem(id) { editId=id; const b=db.bens.find(x=>x.id===id); fillBemForm(b); openModal('modal-bem'); }
 function delBem(id) { if(!confirm('Remover este bem?'))return; db.bens=db.bens.filter(b=>b.id!==id); saveDB(); refreshAll(); renderBens(); toast('Bem removido.'); }
+
+// ═══════════════════════════════════════════════
+// LIMPAR BENS
+// ═══════════════════════════════════════════════
+function openClearBensModal() {
+  const igFilter = document.getElementById('s-ig')?.value || '';
+  const igNome = igFilter ? (db.igrejas.find(x=>x.codigo===igFilter)?.nome || igFilter) : '';
+  const totalGeral = db.bens.length;
+  const totalIgreja = igFilter ? db.bens.filter(b=>b.localidade===igFilter).length : 0;
+  const body = document.getElementById('clear-bens-body');
+  const footer = document.getElementById('clear-bens-footer');
+
+  // Aviso geral
+  let html = `<div style="background:var(--red-bg);border:1px solid rgba(224,49,49,0.25);border-radius:10px;padding:12px 16px;margin-bottom:1.25rem;display:flex;gap:10px;align-items:flex-start">
+    <span style="font-size:1.2rem;flex-shrink:0">⚠️</span>
+    <p style="font-size:0.82rem;color:var(--red);line-height:1.5"><strong>Atenção:</strong> Esta ação é irreversível. Os bens excluídos não poderão ser recuperados.</p>
+  </div>`;
+
+  let footerHtml = `<button class="btn btn-outline" onclick="closeModal('modal-clear-bens')">Cancelar</button>`;
+
+  if(igFilter && totalIgreja > 0) {
+    html += `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem">
+      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:6px">Opção 1 — Igreja filtrada</div>
+      <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">🏛️ ${igNome}</div>
+      <div style="font-size:0.82rem;color:var(--text-muted)">Serão excluídos <strong style="color:var(--red)">${totalIgreja}</strong> bem${totalIgreja!==1?'s':''} desta igreja.</div>
+    </div>`;
+    footerHtml += `<button class="btn btn-danger" onclick="clearBens('${igFilter}','${igNome.replace(/'/g,"\\'")}',${totalIgreja})">🗑️ Limpar ${igNome.length>22?igNome.slice(0,22)+'…':igNome}</button>`;
+  }
+
+  html += `
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:6px">Opção ${igFilter&&totalIgreja>0?'2':'1'} — Todos os bens</div>
+    <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">🗂️ Base completa</div>
+    <div style="font-size:0.82rem;color:var(--text-muted)">Serão excluídos <strong style="color:var(--red)">${totalGeral}</strong> bem${totalGeral!==1?'s':''} de todas as igrejas.</div>
+  </div>`;
+  footerHtml += `<button class="btn btn-danger" style="background:var(--red);color:white;border:none" onclick="clearBens(null,null,${totalGeral})">🗑️ Limpar TUDO</button>`;
+
+  body.innerHTML = html;
+  footer.innerHTML = footerHtml;
+  openModal('modal-clear-bens');
+}
+
+function clearBens(igCod, igNome, count) {
+  const scope = igCod ? `todos os ${count} bens de "${igNome}"` : `todos os ${count} bens do sistema`;
+  if(!confirm(`Confirma a exclusão de ${scope}?\n\nEsta ação NÃO pode ser desfeita.`)) return;
+  if(igCod) {
+    db.bens = db.bens.filter(b => b.localidade !== igCod);
+  } else {
+    db.bens = [];
+    db.nextId = 1;
+  }
+  closeModal('modal-clear-bens');
+  saveDB(); refreshAll(); renderBens();
+  toast(`${count} bem${count!==1?'s':''} excluído${count!==1?'s':''}!`, 'err');
+}
 function fillBemForm(b=null) {
   document.getElementById('bem-title').textContent=b?'Editar Bem':'Novo Bem';
   document.getElementById('b-nome').value=b?.nome||'';
@@ -1534,16 +1639,21 @@ function fillBemForm(b=null) {
   document.getElementById('b-val-at').value=b?.valorAtual||'';
   document.getElementById('b-conta').value=b?.conta||'';
   document.getElementById('b-st').value=b?.status||'Ativo';
+  // Populate church selector
+  const igSel=document.getElementById('b-ig');
+  igSel.innerHTML='';
+  db.igrejas.forEach(ig=>{ const o=document.createElement('option'); o.value=ig.codigo; o.textContent=ig.nome; igSel.appendChild(o); });
+  igSel.value=b?.localidade||selectedChurch||db.igrejas[0]?.codigo||'';
 }
 function saveBem() {
   const nome=document.getElementById('b-nome').value.trim();
   const cod=document.getElementById('b-cod').value.trim();
   if(!nome||!cod){toast('Nome e Código são obrigatórios.','err');return;}
-  const ig=getChurch();
+  const igSelected=document.getElementById('b-ig').value||selectedChurch||db.igrejas[0]?.codigo||'';
   const va=parseFloat(document.getElementById('b-val').value)||0;
   const vd=parseFloat(document.getElementById('b-dep-val').value)||0;
   const vat=parseFloat(document.getElementById('b-val-at').value)||va;
-  const obj={id:editId||db.nextId++,nome,codigo:cod,barcode:document.getElementById('b-bc').value.trim()||genBC(cod),localidade:ig?.codigo||db.igrejas[0]?.codigo||'',dependencia:document.getElementById('b-dep').value.trim().toUpperCase(),fornecedor:document.getElementById('b-forn').value.trim()||'NENHUM',documento:document.getElementById('b-doc').value.trim(),dtAquisicao:document.getElementById('b-dt').value,valorAquisicao:va,valorDepreciacao:vd,valorAtual:vat,conta:document.getElementById('b-conta').value.trim(),status:document.getElementById('b-st').value,invStatus:'pendente',invDep:'',invObs:''};
+  const obj={id:editId||db.nextId++,nome,codigo:cod,barcode:document.getElementById('b-bc').value.trim()||genBC(cod),localidade:igSelected,dependencia:document.getElementById('b-dep').value.trim().toUpperCase(),fornecedor:document.getElementById('b-forn').value.trim()||'NENHUM',documento:document.getElementById('b-doc').value.trim(),dtAquisicao:document.getElementById('b-dt').value,valorAquisicao:va,valorDepreciacao:vd,valorAtual:vat,conta:document.getElementById('b-conta').value.trim(),status:document.getElementById('b-st').value,invStatus:'pendente',invDep:'',invObs:''};
   if(editId){const i=db.bens.findIndex(x=>x.id===editId);if(i>=0){obj.invStatus=db.bens[i].invStatus;obj.invDep=db.bens[i].invDep;obj.invObs=db.bens[i].invObs;db.bens[i]=obj;}}
   else db.bens.push(obj);
   closeModal('modal-bem'); saveDB(); refreshAll(); renderBens(); toast(editId?'Bem atualizado!':'Bem cadastrado!');
@@ -1565,9 +1675,22 @@ function saveIg() {
   const cod=document.getElementById('ig-cod').value.trim();
   const nome=document.getElementById('ig-nome').value.trim();
   if(!cod||!nome){toast('Código e Nome são obrigatórios.','err');return;}
-  if(!editIgId&&db.igrejas.find(ig=>ig.codigo===cod)){toast('Já existe uma igreja com este código.','err');return;}
+  // Verifica duplicata de código apenas quando é uma nova igreja OU quando o código mudou
+  const existingWithCode=db.igrejas.find(ig=>ig.codigo===cod);
+  if(existingWithCode && existingWithCode.id!==editIgId){toast('Já existe uma igreja com este código.','err');return;}
+  const igAtual=editIgId?db.igrejas.find(x=>x.id===editIgId):null;
+  const oldCod=igAtual?.codigo||null;
   const obj={id:editIgId||'ig'+Date.now(),codigo:cod,nome,endereco:document.getElementById('ig-end').value.trim(),cidade:document.getElementById('ig-cid').value.trim(),estado:document.getElementById('ig-est').value.trim(),cnpj:document.getElementById('ig-cnpj').value.trim()};
-  if(editIgId){const i=db.igrejas.findIndex(x=>x.id===editIgId);if(i>=0)db.igrejas[i]=obj;}
+  if(editIgId){
+    const i=db.igrejas.findIndex(x=>x.id===editIgId);
+    if(i>=0)db.igrejas[i]=obj;
+    // Se o código mudou, atualiza todos os bens e dependências que usavam o código antigo
+    if(oldCod && oldCod!==cod){
+      db.bens.forEach(b=>{ if(b.localidade===oldCod) b.localidade=cod; });
+      db.dependencias.forEach(d=>{ if(d.localidade===oldCod) d.localidade=cod; });
+      if(selectedChurch===oldCod) selectedChurch=cod;
+    }
+  }
   else db.igrejas.push(obj);
   closeModal('modal-ig'); buildChurchList(); saveDB(); refreshAll(); renderIgGrid(); toast(editIgId?'Igreja atualizada!':'Igreja cadastrada!');
 }
@@ -2209,8 +2332,7 @@ async function init() {
   // Carrega dados do Firestore
   await loadDB();
 
-  // Sincroniza referência global
-  db = window.db;
+  // selectedChurch sempre usa db (mesma referência)
 
   // Restaura a igreja (mantém selectedChurch para compatibilidade interna)
   if(selectedChurch && !db.igrejas.find(x=>x.codigo===selectedChurch)) selectedChurch='';
