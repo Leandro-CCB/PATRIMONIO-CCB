@@ -633,6 +633,12 @@
 
     <div class="progress-card">
       <div class="prog-title">Progresso do Inventário</div>
+      <div style="margin-bottom:1rem">
+        <div class="dep-ctx-label" style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:6px">Igreja</div>
+        <select id="inv-church-sel" onchange="selectInvChurch(this.value)" style="width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;outline:none;">
+          <option value="">Todas as igrejas</option>
+        </select>
+      </div>
       <div class="prog-bar-wrap">
         <div class="prog-bar-top"><span>Verificados</span><span id="prog-pct">0%</span></div>
         <div class="prog-bar"><div class="prog-bar-fill" id="prog-fill" style="width:0%"></div></div>
@@ -901,10 +907,15 @@
 <div id="tab-relatorio" class="page">
   <div class="page-header">
     <div class="page-header-left"><h2>Relatório do Inventário</h2><p>Resumo completo da verificação</p></div>
-    <button class="btn btn-primary btn-sm" onclick="exportCSV()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Exportar CSV
-    </button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="rel-church-sel" onchange="selectRelChurch(this.value)" style="background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:7px 14px;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;outline:none;cursor:pointer;min-width:200px;">
+        <option value="">Todas as igrejas</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="exportCSV()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportar CSV
+      </button>
+    </div>
   </div>
   <div class="rel-cards" id="rel-cards"></div>
   <div class="table-wrap">
@@ -1217,17 +1228,24 @@ const PER_PAGE = 20;
 // UTILS
 // ═══════════════════════════════════════════════
 function getChurch() { return db.igrejas.find(ig=>ig.codigo===selectedChurch)||null; }
-function getChurchBens() { const ig=getChurch(); if(!ig)return []; return db.bens.filter(b=>b.localidade===ig.codigo); }
+function getChurchBens(cod) {
+  const localidade=cod||selectedChurch;
+  if(!localidade)return db.bens;
+  return db.bens.filter(b=>b.localidade===localidade);
+}
 function getChurchDeps() {
-  const ig=getChurch(); if(!ig)return [];
-  const fromDeps=db.dependencias.filter(d=>d.localidade===ig.codigo).map(d=>d.nome);
-  const fromBens=[...new Set(db.bens.filter(b=>b.localidade===ig.codigo&&b.dependencia).map(b=>b.dependencia))];
+  const cod=invChurch||selectedChurch;
+  if(!cod)return [...new Set([...db.dependencias.map(d=>d.nome),...db.bens.filter(b=>b.dependencia).map(b=>b.dependencia)])].sort();
+  const fromDeps=db.dependencias.filter(d=>d.localidade===cod).map(d=>d.nome);
+  const fromBens=[...new Set(db.bens.filter(b=>b.localidade===cod&&b.dependencia).map(b=>b.dependencia))];
   return [...new Set([...fromDeps,...fromBens])].sort();
 }
 function fmtBRL(v){ return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function genBC(cod){ return cod.replace(/[^0-9]/g,'').padStart(13,'0').slice(-13)||String(Math.floor(Math.random()*9000000000000)+1000000000000); }
 
 let selectedChurch = '';
+let invChurch = ''; // filtro de igreja exclusivo da aba Inventário
+let relChurch = ''; // filtro de igreja exclusivo da aba Relatório
 // Expõe funções para o listener em tempo real do Firebase
 window._exposeFns = function() {
   window.refreshAll = refreshAll;
@@ -1241,6 +1259,14 @@ window._exposeFns = function() {
 // ═══════════════════════════════════════════════
 // CHURCH DROPDOWN
 // ═══════════════════════════════════════════════
+function selectInvChurch(cod) {
+  invChurch = cod;
+  refreshAll();
+}
+function selectRelChurch(cod) {
+  relChurch = cod;
+  renderRel();
+}
 function buildChurchList(filter='') {
   const list = document.getElementById('church-list-items');
   if(!list) return; // dropdown não presente no DOM
@@ -1333,25 +1359,40 @@ function toast(msg,type='ok') {
 function refreshAll() {
   const bens=db.bens; // todos os bens, sem filtro de igreja
   document.getElementById('cnt-bens').textContent=bens.length;
-  // Deps in inv — todas as dependências de todas as igrejas
-  const allDeps=[...new Set([
-    ...db.dependencias.map(d=>d.nome),
-    ...db.bens.filter(b=>b.dependencia).map(b=>b.dependencia)
+  // Popula o seletor de igreja do inventário
+  const invSel=document.getElementById('inv-church-sel');
+  if(invSel){
+    const curVal=invSel.value;
+    invSel.innerHTML='<option value="">Todas as igrejas</option>';
+    db.igrejas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===curVal)o.selected=true;invSel.appendChild(o);});
+    if(invChurch)invSel.value=invChurch;
+  }
+  // Bens filtrados pela igreja do inventário (se selecionada)
+  const bensFiltrados = invChurch ? bens.filter(b=>b.localidade===invChurch) : bens;
+  // Deps in inv — dependências da igreja selecionada no inventário (ou todas)
+  const allDepsInv=[...new Set([
+    ...(invChurch ? db.dependencias.filter(d=>d.localidade===invChurch) : db.dependencias).map(d=>d.nome),
+    ...bensFiltrados.filter(b=>b.dependencia).map(b=>b.dependencia)
   ])].sort();
+  const allDeps=allDepsInv;
   const sel=document.getElementById('dep-ctx-sel');
   const cv=sel.value;
   sel.innerHTML='<option value="">— Todas —</option>';
   allDeps.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===cv)o.selected=true; sel.appendChild(o); });
-  // Filter dep (aba Bens)
+  // Filter dep (aba Bens) — mantém todas as dependências de todos os bens
+  const allDepsBens=[...new Set([
+    ...db.dependencias.map(d=>d.nome),
+    ...db.bens.filter(b=>b.dependencia).map(b=>b.dependencia)
+  ])].sort();
   const sdep=document.getElementById('s-dep');
   const sdepv=sdep.value;
   sdep.innerHTML='<option value="">Todas as dependências</option>';
-  allDeps.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===sdepv)o.selected=true; sdep.appendChild(o); });
-  // Stats — todos os bens
-  const ok=bens.filter(b=>b.invStatus==='confirmado').length;
-  const prob=bens.filter(b=>b.invStatus==='problema').length;
-  const pend=bens.filter(b=>!b.invStatus||b.invStatus==='pendente').length;
-  const total=bens.length;
+  allDepsBens.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===sdepv)o.selected=true; sdep.appendChild(o); });
+  // Stats — filtrados pela igreja do inventário
+  const ok=bensFiltrados.filter(b=>b.invStatus==='confirmado').length;
+  const prob=bensFiltrados.filter(b=>b.invStatus==='problema').length;
+  const pend=bensFiltrados.filter(b=>!b.invStatus||b.invStatus==='pendente').length;
+  const total=bensFiltrados.length;
   document.getElementById('p-ok').textContent=ok;
   document.getElementById('p-prob').textContent=prob;
   document.getElementById('p-pend').textContent=pend;
@@ -1359,7 +1400,10 @@ function refreshAll() {
   const pct=total?Math.round((ok+prob)/total*100):0;
   document.getElementById('prog-pct').textContent=pct+'%';
   document.getElementById('prog-fill').style.width=pct+'%';
-  document.getElementById('bens-sub').textContent=`${total} bens no total · ${ok} confirmados · ${pend} pendentes`;
+  const totalGlobal=bens.length;
+  const okGlobal=bens.filter(b=>b.invStatus==='confirmado').length;
+  const pendGlobal=bens.filter(b=>!b.invStatus||b.invStatus==='pendente').length;
+  document.getElementById('bens-sub').textContent=`${totalGlobal} bens no total · ${okGlobal} confirmados · ${pendGlobal} pendentes`;
   // Totals são atualizados pelo renderBens com base nos filtros ativos
 }
 
@@ -1371,7 +1415,8 @@ function bcKey(e) { if(e.key==='Enter')doScan(); }
 function bcLive(v) {
   const sug=document.getElementById('live-sug');
   if(!v||v.length<2){sug.style.display='none';return;}
-  const hits=db.bens.filter(b=>b.codigo.includes(v)||b.barcode.includes(v)||(b.nome&&b.nome.toLowerCase().includes(v.toLowerCase()))).slice(0,5);
+  const pool=invChurch?db.bens.filter(b=>b.localidade===invChurch):db.bens;
+  const hits=pool.filter(b=>b.codigo.includes(v)||b.barcode.includes(v)||(b.nome&&b.nome.toLowerCase().includes(v.toLowerCase()))).slice(0,5);
   if(!hits.length){sug.style.display='none';return;}
   sug.innerHTML=hits.map(b=>{
     const igNome=db.igrejas.find(x=>x.codigo===b.localidade)?.nome||b.localidade||'';
@@ -1389,7 +1434,8 @@ function selectSug(bc) { document.getElementById('bc-input').value=bc; document.
 function doScan() {
   const v=document.getElementById('bc-input').value.trim();
   if(!v)return;
-  const bem=db.bens.find(b=>b.barcode===v||b.codigo===v);
+  const pool=invChurch?db.bens.filter(b=>b.localidade===invChurch):db.bens;
+  const bem=pool.find(b=>b.barcode===v||b.codigo===v);
   if(!bem){show('s-empty',false);show('s-notfound',true);show('s-found',false);return;}
   scanned=bem;
   const igNomeScanned=db.igrejas.find(x=>x.codigo===bem.localidade)?.nome||bem.localidade||'';
@@ -1712,11 +1758,10 @@ function renderIgGrid() {
   }
   grid.innerHTML=db.igrejas.map(ig=>{
     const bens=db.bens.filter(b=>b.localidade===ig.codigo).length;
-    const isActive=ig.codigo===selectedChurch;
-    return `<div class="entity-card" style="${isActive?'border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,91,219,0.15)':''}">
+    return `<div class="entity-card">
       <div class="entity-card-header">
         <div>
-          <div class="entity-card-title">${ig.nome}${isActive?'<span style="margin-left:7px;font-size:0.65rem;background:var(--accent-light);color:var(--accent);padding:2px 7px;border-radius:10px;font-weight:700;vertical-align:middle">ATIVA</span>':''}</div>
+          <div class="entity-card-title">${ig.nome}</div>
           <div class="entity-card-code">${ig.codigo}</div>
         </div>
         <div class="entity-card-actions">
@@ -2132,7 +2177,15 @@ function doImport(){
 // RELATÓRIO
 // ═══════════════════════════════════════════════
 function renderRel() {
-  const b=getChurchBens();
+  // Popula seletor de igreja do relatório
+  const relSel=document.getElementById('rel-church-sel');
+  if(relSel){
+    const cur=relSel.value||relChurch;
+    relSel.innerHTML='<option value="">Todas as igrejas</option>';
+    db.igrejas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===cur)o.selected=true;relSel.appendChild(o);});
+    if(relChurch)relSel.value=relChurch;
+  }
+  const b=relChurch?db.bens.filter(x=>x.localidade===relChurch):db.bens;
   const ok=b.filter(x=>x.invStatus==='confirmado'),prob=b.filter(x=>x.invStatus==='problema'),pend=b.filter(x=>x.invStatus==='pendente');
   document.getElementById('rel-cards').innerHTML=[
     ['Confirmados',ok.length,'var(--green)'],
@@ -2153,7 +2206,7 @@ function renderRel() {
   </tr>`).join('');
 }
 function exportCSV() {
-  const b=getChurchBens();
+  const b=relChurch?db.bens.filter(x=>x.localidade===relChurch):db.bens;
   const rows=[['Status Inventário','Código','Nome','Dep. Cadastrada','Dep. Confirmada','Vl. Aquisição','Vl. Depreciação','Vl. Atual','Status Bem']];
   b.forEach(x=>rows.push([x.invStatus,x.codigo,x.nome,x.dependencia,x.invDep||'',x.valorAquisicao,x.valorDepreciacao||0,x.valorAtual,x.status]));
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
