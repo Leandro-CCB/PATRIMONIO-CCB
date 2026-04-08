@@ -1520,9 +1520,16 @@ function problema() {
   show('s-empty',true);show('s-notfound',false);show('s-found',false); scanned=null;
 }
 function resetInv() {
-  if(!confirm('Reiniciar inventário? Todos os status serão apagados.'))return;
-  db.bens.forEach(b=>{b.invStatus='pendente';b.invDep='';b.invObs='';});
-  saveDB(); refreshAll(); renderBens(); toast('Inventário reiniciado.');
+  if(!invChurch) {
+    alert('Nenhuma igreja selecionada para reiniciar o inventário.');
+    return;
+  }
+  const igreja = db.igrejas.find(ig => ig.codigo === invChurch);
+  const nomeIgreja = igreja ? igreja.nome : invChurch;
+  if(!confirm(`Reiniciar inventário de "${nomeIgreja}"? Todos os status dessa igreja serão apagados.`)) return;
+  db.bens.filter(b => b.localidade === invChurch).forEach(b => { b.invStatus = 'pendente'; b.invDep = ''; b.invObs = ''; });
+  saveDB(); refreshAll(); renderBens();
+  toast(`Inventário de "${nomeIgreja}" reiniciado.`);
 }
 function cadastroRapido() {
   const v=document.getElementById('bc-input').value.trim();
