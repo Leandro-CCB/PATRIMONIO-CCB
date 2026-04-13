@@ -522,9 +522,98 @@
     .import-layout { grid-template-columns: 1fr; }
     .imp-stats { grid-template-columns: repeat(2, 1fr); }
   }
+
+  /* ── LOGIN SCREEN ── */
+  #login-screen {
+    display: none; position: fixed; inset: 0;
+    background: linear-gradient(135deg, #1a2035 0%, #2d3a6e 50%, #3b5bdb 100%);
+    z-index: 9998; align-items: center; justify-content: center;
+  }
+  #login-screen.show { display: flex; }
+  .login-box {
+    background: var(--surface); border-radius: 22px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.35); padding: 2.5rem 2.25rem;
+    width: 100%; max-width: 400px; animation: slideUp 0.3s ease;
+  }
+  .login-logo { text-align: center; margin-bottom: 2rem; }
+  .login-logo .login-icon {
+    width: 60px; height: 60px; margin: 0 auto 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 16px; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: white; box-shadow: 0 4px 16px rgba(59,91,219,0.45);
+  }
+  .login-logo h2 { font-family: 'Lora', serif; font-size: 1.4rem; color: var(--text); }
+  .login-logo h2 span { color: var(--accent); }
+  .login-logo p { color: var(--text-muted); font-size: 0.82rem; margin-top: 4px; }
+  .login-field { margin-bottom: 1rem; }
+  .login-field label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 7px; }
+  .login-field input {
+    width: 100%; padding: 10px 14px; border: 1.5px solid var(--border);
+    border-radius: 10px; font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.9rem; color: var(--text); outline: none; background: var(--bg);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .login-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.12); }
+  .login-error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(224,49,49,0.3); border-radius: 9px; padding: 10px 14px; font-size: 0.82rem; font-weight: 600; margin-bottom: 1rem; display: none; }
+  .login-error.show { display: block; }
+  .btn-login { width: 100%; padding: 11px; background: var(--accent); color: white; border: none; border-radius: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.9rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(59,91,219,0.35); transition: all 0.15s; letter-spacing: 0.01em; }
+  .btn-login:hover { background: var(--accent2); transform: translateY(-1px); }
+
+  /* ── USER INFO in header ── */
+  .user-info { display: flex; align-items: center; gap: 10px; }
+  .user-badge { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; }
+  .user-avatar { width: 28px; height: 28px; background: linear-gradient(135deg,var(--accent),var(--accent2)); border-radius: 8px; display:flex;align-items:center;justify-content:center;font-size:12px;color:white;font-weight:700; }
+  .user-name { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+  .user-role { font-size: 0.68rem; color: var(--text-muted); }
+  .btn-logout { background: none; border: 1.5px solid var(--border); border-radius: 8px; padding: 6px 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+  .btn-logout:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+
+  /* ── CONFIGURAÇÕES TAB ── */
+  .cfg-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow-sm); }
+  .cfg-section h3 { font-family: 'Lora', serif; font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+  .cfg-section > p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem; }
+  .users-grid { display: flex; flex-direction: column; gap: 10px; }
+  .user-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; transition: border-color 0.15s; }
+  .user-card:hover { border-color: var(--border2); }
+  .user-card-avatar { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: white; flex-shrink: 0; }
+  .user-card-info { flex: 1; }
+  .user-card-name { font-weight: 700; font-size: 0.88rem; color: var(--text); }
+  .user-card-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .user-card-church { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-light); color: var(--accent); border-radius: 6px; padding: 2px 9px; font-size: 0.72rem; font-weight: 600; margin-top: 4px; }
+  .user-card-master { display: inline-flex; align-items: center; gap: 5px; background: var(--green-bg); color: var(--green); border-radius: 6px; padding: 2px 9px; font-size: 0.72rem; font-weight: 600; margin-top: 4px; }
+  .cfg-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .cfg-form-row.single { grid-template-columns: 1fr; }
+  .cfg-field label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
+  .cfg-field input, .cfg-field select { width: 100%; padding: 9px 13px; border: 1.5px solid var(--border); border-radius: 9px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; color: var(--text); outline: none; background: var(--bg); transition: border-color 0.15s; }
+  .cfg-field input:focus, .cfg-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.1); }
+  .cfg-add-bar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.25rem; padding: 1.25rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; }
+  .cfg-add-bar .cfg-field { flex: 1; min-width: 140px; }
 </style>
 </head>
 <body>
+
+<!-- ══ TELA DE LOGIN ══ -->
+<div id="login-screen" class="show">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+      </div>
+      <h2>Patrimônio<span>Igreja</span></h2>
+      <p>Sistema de Inventário de Bens</p>
+    </div>
+    <div class="login-error" id="login-error">Usuário ou senha incorretos.</div>
+    <div class="login-field">
+      <label>Usuário</label>
+      <input type="text" id="login-user" placeholder="Digite seu usuário" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-field">
+      <label>Senha</label>
+      <input type="password" id="login-pass" placeholder="Digite sua senha" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn-login" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
 
 <header>
   <div class="logo">
@@ -534,6 +623,16 @@
     <h1>Patrimônio<span>Igreja</span></h1>
   </div>
   <!-- church selector removed -->
+  <div class="user-info" id="user-info-bar" style="display:none">
+    <div class="user-badge">
+      <div class="user-avatar" id="header-avatar">?</div>
+      <div>
+        <div class="user-name" id="header-username">—</div>
+        <div class="user-role" id="header-userrole">—</div>
+      </div>
+    </div>
+    <button class="btn-logout" onclick="doLogout()">Sair</button>
+  </div>
 </header>
 
 <div class="tabs">
@@ -556,6 +655,10 @@
   <button class="tab" onclick="showTab('relatorio',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
     Relatório
+  </button>
+  <button class="tab" id="tab-btn-config" onclick="showTab('config',this)" style="display:none">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    Configurações
   </button>
 </div>
 
@@ -928,6 +1031,54 @@
   </div>
 </div>
 
+<!-- ══ CONFIGURAÇÕES ══ -->
+<div id="tab-config" class="page">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h2>Configurações</h2>
+      <p>Gerencie usuários e permissões de acesso</p>
+    </div>
+  </div>
+
+  <!-- Formulário de novo usuário -->
+  <div class="cfg-section">
+    <h3>➕ Novo Usuário</h3>
+    <p>Cadastre um usuário e vincule-o a uma Casa de Oração. Usuário Master tem acesso total.</p>
+    <div class="cfg-add-bar">
+      <div class="cfg-field">
+        <label>Usuário *</label>
+        <input type="text" id="cfg-new-user" placeholder="Ex: jose.silva">
+      </div>
+      <div class="cfg-field">
+        <label>Senha *</label>
+        <input type="password" id="cfg-new-pass" placeholder="Mínimo 4 caracteres">
+      </div>
+      <div class="cfg-field">
+        <label>Nome completo</label>
+        <input type="text" id="cfg-new-nome" placeholder="Ex: José da Silva">
+      </div>
+      <div class="cfg-field">
+        <label>Casa de Oração</label>
+        <select id="cfg-new-church">
+          <option value="">— Master (acesso total) —</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn btn-primary" onclick="saveNewUser()">+ Adicionar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lista de usuários -->
+  <div class="cfg-section">
+    <h3>👥 Usuários Cadastrados</h3>
+    <p>Clique em um usuário para editar ou remover.</p>
+    <div class="users-grid" id="users-grid">
+      <p style="color:var(--text-muted);font-size:0.85rem">Nenhum usuário cadastrado ainda.</p>
+    </div>
+  </div>
+</div>
+
 </main>
 
 <!-- MODAL BEM -->
@@ -1042,6 +1193,48 @@
       <div id="clear-bens-body"></div>
     </div>
     <div class="modal-footer" id="clear-bens-footer"></div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR USUÁRIO -->
+<div class="modal-overlay" id="modal-edit-user">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3 id="edit-user-title">Editar Usuário</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-edit-user')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-user-idx">
+      <div class="cfg-form-row">
+        <div class="cfg-field">
+          <label>Usuário *</label>
+          <input type="text" id="edit-user-login" placeholder="login">
+        </div>
+        <div class="cfg-field">
+          <label>Nova Senha (deixe em branco p/ manter)</label>
+          <input type="password" id="edit-user-pass" placeholder="Nova senha">
+        </div>
+      </div>
+      <div class="cfg-form-row">
+        <div class="cfg-field">
+          <label>Nome completo</label>
+          <input type="text" id="edit-user-nome" placeholder="Nome">
+        </div>
+        <div class="cfg-field">
+          <label>Casa de Oração</label>
+          <select id="edit-user-church">
+            <option value="">— Master (acesso total) —</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn btn-danger btn-sm" onclick="deleteUser()">🗑️ Excluir</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('modal-edit-user')">Cancelar</button>
+        <button class="btn btn-primary" onclick="updateUser()">Salvar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1319,6 +1512,10 @@ function showTab(id,el) {
   if(id==='relatorio'){renderRel();}
   if(id==='cadastros'){renderIgGrid();renderDepGrid();}
   if(id==='importacao'){impRefreshChurchSel();}
+  if(id==='config'){
+    populateCfgChurches('cfg-new-church');
+    renderUsersGrid();
+  }
 }
 function showSubTab(id,el) {
   document.getElementById('sub-igrejas').style.display=id==='igrejas'?'block':'none';
@@ -2384,6 +2581,197 @@ document.getElementById('cam-overlay').addEventListener('click', function(e) {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════
+// AUTH — Login / Usuários
+// ═══════════════════════════════════════════════
+let currentUser = null; // { login, nome, church, master }
+
+// Carrega usuários do Firestore (coleção 'usuarios')
+async function loadUsers() {
+  try {
+    const ref = window._fsDoc(window._firestore, 'patrimonio', 'usuarios');
+    const snap = await window._fsGetDoc(ref);
+    if(snap.exists()) { db.usuarios = snap.data().lista || []; }
+    else { db.usuarios = []; }
+  } catch(e) { db.usuarios = []; }
+}
+
+async function saveUsers() {
+  try {
+    const ref = window._fsDoc(window._firestore, 'patrimonio', 'usuarios');
+    await window._fsSetDoc(ref, { lista: db.usuarios });
+  } catch(e) { toast('Erro ao salvar usuários.', 'err'); }
+}
+
+function doLogin() {
+  const u = document.getElementById('login-user').value.trim().toLowerCase();
+  const p = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-error');
+  if(!u || !p) { err.textContent='Preencha usuário e senha.'; err.classList.add('show'); return; }
+  // Verifica usuários cadastrados
+  const found = (db.usuarios||[]).find(x => x.login.toLowerCase()===u && x.senha===p);
+  if(!found) { err.textContent='Usuário ou senha incorretos.'; err.classList.add('show'); return; }
+  err.classList.remove('show');
+  currentUser = { login: found.login, nome: found.nome||found.login, church: found.church||'', master: !found.church };
+  afterLogin();
+}
+
+function afterLogin() {
+  document.getElementById('login-screen').classList.remove('show');
+  // Header
+  document.getElementById('user-info-bar').style.display='flex';
+  document.getElementById('header-username').textContent = currentUser.nome;
+  document.getElementById('header-userrole').textContent = currentUser.master ? 'Master' : (getChurchNameByCode(currentUser.church)||currentUser.church);
+  document.getElementById('header-avatar').textContent = (currentUser.nome||'?')[0].toUpperCase();
+  // Tabs — oculta abas restritas para não-master
+  applyTabPermissions();
+  // Se não-master, pré-seleciona a igreja do usuário no inventário
+  if(!currentUser.master && currentUser.church) {
+    invChurch = currentUser.church;
+    const sel = document.getElementById('inv-church-sel');
+    if(sel) sel.value = currentUser.church;
+    refreshAll(); renderBens(); renderRel();
+    // Bloqueia seletor de igrejas no inventário
+    if(sel) sel.disabled = true;
+    // Bloqueia seletor do relatório
+    const relSel = document.getElementById('rel-church-sel');
+    if(relSel) { relSel.value = currentUser.church; relSel.disabled = true; selectRelChurch(currentUser.church); }
+  }
+}
+
+function applyTabPermissions() {
+  if(!currentUser) return;
+  // Aba Configurações: só master
+  const cfgBtn = document.getElementById('tab-btn-config');
+  if(cfgBtn) cfgBtn.style.display = currentUser.master ? '' : 'none';
+  if(!currentUser.master) {
+    // Esconde abas: Bens, Cadastros, Importação, Relatório (mantém só Inventário)
+    // Usuário restrito só vê Inventário
+    document.querySelectorAll('.tab').forEach(t => {
+      const txt = t.textContent.trim();
+      if(txt !== 'Inventário') t.style.display = 'none';
+    });
+    // Garante que só a aba inventário fica visível
+    document.querySelectorAll('.tab')[0].style.display = '';
+  } else {
+    // Master: mostra tudo
+    document.querySelectorAll('.tab').forEach(t => t.style.display = '');
+    if(cfgBtn) cfgBtn.style.display = '';
+  }
+}
+
+function getChurchNameByCode(cod) {
+  if(!cod) return '';
+  const ig = (db.igrejas||[]).find(x=>x.codigo===cod);
+  return ig ? ig.nome : cod;
+}
+
+function doLogout() {
+  currentUser = null;
+  document.getElementById('login-screen').classList.add('show');
+  document.getElementById('login-user').value='';
+  document.getElementById('login-pass').value='';
+  document.getElementById('user-info-bar').style.display='none';
+  // Restaura tabs
+  document.querySelectorAll('.tab').forEach(t=>t.style.display='');
+  document.getElementById('tab-btn-config').style.display='none';
+  // Remove bloqueios
+  const invSel=document.getElementById('inv-church-sel');
+  if(invSel) invSel.disabled=false;
+  const relSel=document.getElementById('rel-church-sel');
+  if(relSel) relSel.disabled=false;
+  invChurch=''; relChurch='';
+}
+
+// ── Gerenciamento de Usuários (aba Config) ──
+function renderUsersGrid() {
+  const grid = document.getElementById('users-grid');
+  if(!grid) return;
+  const usuarios = db.usuarios||[];
+  if(!usuarios.length) { grid.innerHTML='<p style="color:var(--text-muted);font-size:0.85rem">Nenhum usuário cadastrado.</p>'; return; }
+  const colors=['#3b5bdb','#2f9e44','#e67700','#1971c2','#c2255c','#7048e8'];
+  grid.innerHTML = usuarios.map((u,i)=>{
+    const cor = colors[i%colors.length];
+    const churchName = u.church ? (getChurchNameByCode(u.church)||u.church) : null;
+    return `<div class="user-card" onclick="openEditUser(${i})" style="cursor:pointer">
+      <div class="user-card-avatar" style="background:${cor}">${(u.nome||u.login)[0].toUpperCase()}</div>
+      <div class="user-card-info">
+        <div class="user-card-name">${u.nome||u.login} <span style="font-size:0.72rem;font-weight:400;color:var(--text-muted)">@${u.login}</span></div>
+        ${churchName ? `<div class="user-card-church">🏛️ ${churchName}</div>` : '<div class="user-card-master">⭐ Master — acesso total</div>'}
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    </div>`;
+  }).join('');
+}
+
+function populateCfgChurches(selId) {
+  const sel = document.getElementById(selId);
+  if(!sel) return;
+  sel.innerHTML='<option value="">— Master (acesso total) —</option>';
+  (db.igrejas||[]).forEach(ig=>{
+    const o=document.createElement('option'); o.value=ig.codigo; o.textContent=ig.nome; sel.appendChild(o);
+  });
+}
+
+function saveNewUser() {
+  const login = document.getElementById('cfg-new-user').value.trim().toLowerCase();
+  const senha = document.getElementById('cfg-new-pass').value;
+  const nome  = document.getElementById('cfg-new-nome').value.trim();
+  const church= document.getElementById('cfg-new-church').value;
+  if(!login){ toast('Informe o usuário.','err'); return; }
+  if(!senha || senha.length<4){ toast('Senha mínima de 4 caracteres.','err'); return; }
+  if(!db.usuarios) db.usuarios=[];
+  if(db.usuarios.find(x=>x.login===login)){ toast('Usuário já existe.','err'); return; }
+  db.usuarios.push({ login, senha, nome:nome||login, church });
+  saveUsers();
+  toast('Usuário cadastrado!','ok');
+  document.getElementById('cfg-new-user').value='';
+  document.getElementById('cfg-new-pass').value='';
+  document.getElementById('cfg-new-nome').value='';
+  document.getElementById('cfg-new-church').value='';
+  renderUsersGrid();
+}
+
+function openEditUser(idx) {
+  const u = db.usuarios[idx];
+  if(!u) return;
+  document.getElementById('edit-user-idx').value=idx;
+  document.getElementById('edit-user-login').value=u.login;
+  document.getElementById('edit-user-pass').value='';
+  document.getElementById('edit-user-nome').value=u.nome||'';
+  populateCfgChurches('edit-user-church');
+  document.getElementById('edit-user-church').value=u.church||'';
+  document.getElementById('edit-user-title').textContent='Editar: '+(u.nome||u.login);
+  document.getElementById('modal-edit-user').classList.add('open');
+}
+
+function updateUser() {
+  const idx=parseInt(document.getElementById('edit-user-idx').value);
+  const login=document.getElementById('edit-user-login').value.trim().toLowerCase();
+  const newPass=document.getElementById('edit-user-pass').value;
+  const nome=document.getElementById('edit-user-nome').value.trim();
+  const church=document.getElementById('edit-user-church').value;
+  if(!login){ toast('Informe o usuário.','err'); return; }
+  const dup = db.usuarios.findIndex(x=>x.login===login);
+  if(dup!==-1 && dup!==idx){ toast('Esse login já está em uso.','err'); return; }
+  db.usuarios[idx].login=login;
+  db.usuarios[idx].nome=nome||login;
+  db.usuarios[idx].church=church;
+  if(newPass && newPass.length>=4) db.usuarios[idx].senha=newPass;
+  saveUsers(); renderUsersGrid();
+  closeModal('modal-edit-user');
+  toast('Usuário atualizado!','ok');
+}
+
+function deleteUser() {
+  const idx=parseInt(document.getElementById('edit-user-idx').value);
+  if(!confirm('Excluir este usuário?')) return;
+  db.usuarios.splice(idx,1);
+  saveUsers(); renderUsersGrid();
+  closeModal('modal-edit-user');
+  toast('Usuário excluído.','ok');
+}
+
 async function init() {
   // Aguarda Firebase estar disponível
   let tries = 0;
@@ -2391,6 +2779,13 @@ async function init() {
 
   // Carrega dados do Firestore
   await loadDB();
+  await loadUsers();
+
+  // Se não há usuários cadastrados, cria o usuário master padrão
+  if(!db.usuarios || db.usuarios.length===0) {
+    db.usuarios = [{ login:'master', senha:'master123', nome:'Administrador', church:'' }];
+    await saveUsers();
+  }
 
   // selectedChurch sempre usa db (mesma referência)
 
@@ -2409,6 +2804,10 @@ async function init() {
   // Marca DB como pronto e expõe funções para o listener em tempo real
   window._dbReady = true;
   if(window._exposeFns) window._exposeFns();
+
+  // Mostra tela de login
+  document.getElementById('login-screen').classList.add('show');
+  setTimeout(()=>document.getElementById('login-user').focus(), 300);
 }
 init();
 </script>
