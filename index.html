@@ -1554,7 +1554,9 @@ function toast(msg,type='ok') {
 // REFRESH ALL
 // ═══════════════════════════════════════════════
 function refreshAll() {
-  const bens=db.bens; // todos os bens, sem filtro de igreja
+  const bens = (currentUser && !currentUser.master && currentUser.church)
+    ? db.bens.filter(b => b.localidade === currentUser.church)
+    : db.bens; // filtra bens pela igreja do usuário logado (ou todos se master)
   document.getElementById('cnt-bens').textContent=bens.length;
   // Popula o seletor de igreja do inventário
   const invSel=document.getElementById('inv-church-sel');
@@ -1612,7 +1614,8 @@ function bcKey(e) { if(e.key==='Enter')doScan(); }
 function bcLive(v) {
   const sug=document.getElementById('live-sug');
   if(!v||v.length<2){sug.style.display='none';return;}
-  const pool=invChurch?db.bens.filter(b=>b.localidade===invChurch):db.bens;
+  const _churchFilter = invChurch || (currentUser && !currentUser.master ? currentUser.church : '');
+  const pool=_churchFilter?db.bens.filter(b=>b.localidade===_churchFilter):db.bens;
   const hits=pool.filter(b=>b.codigo.includes(v)||b.barcode.includes(v)||(b.nome&&b.nome.toLowerCase().includes(v.toLowerCase()))).slice(0,5);
   if(!hits.length){sug.style.display='none';return;}
   sug.innerHTML=hits.map(b=>{
@@ -1631,7 +1634,8 @@ function selectSug(bc) { document.getElementById('bc-input').value=bc; document.
 function doScan() {
   const v=document.getElementById('bc-input').value.trim();
   if(!v)return;
-  const pool=invChurch?db.bens.filter(b=>b.localidade===invChurch):db.bens;
+  const _churchFilter = invChurch || (currentUser && !currentUser.master ? currentUser.church : '');
+  const pool=_churchFilter?db.bens.filter(b=>b.localidade===_churchFilter):db.bens;
   const bem=pool.find(b=>b.barcode===v||b.codigo===v);
   if(!bem){show('s-empty',false);show('s-notfound',true);show('s-found',false);return;}
   scanned=bem;
@@ -1743,16 +1747,24 @@ function renderBens() {
   const inv=document.getElementById('s-inv')?.value||'';
   const dep=document.getElementById('s-dep')?.value||'';
   const igFilter=document.getElementById('s-ig')?.value||'';
-  // Populate igreja filter dropdown
+  // Populate igreja filter dropdown — usuário restrito vê só sua igreja
   const igSel=document.getElementById('s-ig');
   if(igSel){
-    const curIgVal=igSel.value;
-    igSel.innerHTML='<option value="">Todas as igrejas</option>';
-    db.igrejas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===curIgVal)o.selected=true;igSel.appendChild(o);});
-    if(igFilter)igSel.value=igFilter;
+    const isRestricted = currentUser && !currentUser.master && currentUser.church;
+    const igjesPermitidas = isRestricted
+      ? db.igrejas.filter(ig => ig.codigo === currentUser.church)
+      : db.igrejas;
+    const curIgVal = isRestricted ? currentUser.church : igSel.value;
+    igSel.innerHTML = isRestricted ? '' : '<option value="">Todas as igrejas</option>';
+    igjesPermitidas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===curIgVal)o.selected=true;igSel.appendChild(o);});
+    igSel.disabled = !!isRestricted;
+    if(!isRestricted && igFilter) igSel.value=igFilter;
   }
-  // Usa todos os bens do banco (não filtra por igreja ativa aqui)
-  let bens=db.bens.filter(b=>{
+  // Restringe ao banco de bens permitido para o usuário logado
+  const bensBanco = (currentUser && !currentUser.master && currentUser.church)
+    ? db.bens.filter(b => b.localidade === currentUser.church)
+    : db.bens;
+  let bens=bensBanco.filter(b=>{
     if(igFilter&&b.localidade!==igFilter)return false;
     if(st&&b.status!==st)return false;
     if(dep&&b.dependencia!==dep)return false;
