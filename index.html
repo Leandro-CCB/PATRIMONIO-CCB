@@ -2657,14 +2657,13 @@ function applyTabPermissions() {
   const cfgBtn = document.getElementById('tab-btn-config');
   if(cfgBtn) cfgBtn.style.display = currentUser.master ? '' : 'none';
   if(!currentUser.master) {
-    // Esconde abas: Bens, Cadastros, Importação, Relatório (mantém só Inventário)
-    // Usuário restrito só vê Inventário
+    // Usuário restrito vê Inventário e Bens (filtrados pela igreja dele).
+    // Continua ocultando Cadastros, Importação, Relatório e Configurações.
+    const abasPermitidas = ['Inventário', 'Bens'];
     document.querySelectorAll('.tab').forEach(t => {
       const txt = t.textContent.trim();
-      if(txt !== 'Inventário') t.style.display = 'none';
+      t.style.display = abasPermitidas.some(a => txt.startsWith(a)) ? '' : 'none';
     });
-    // Garante que só a aba inventário fica visível
-    document.querySelectorAll('.tab')[0].style.display = '';
   } else {
     // Master: mostra tudo
     document.querySelectorAll('.tab').forEach(t => t.style.display = '');
