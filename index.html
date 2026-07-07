@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PatrimônioIgreja — Inventário</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3b5bdb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="PatrimônioIgreja">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Lora:ital,wght@0,600;1,400&display=swap');
 
@@ -622,6 +633,9 @@
     </div>
     <h1>Patrimônio<span>Igreja</span></h1>
   </div>
+  <button id="pwa-install-btn" onclick="installPWA()" style="display:none;align-items:center;gap:6px;padding:7px 14px;background:var(--accent-light);border:1.5px solid #c5d0f8;border-radius:10px;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.8rem;font-weight:600;color:var(--accent);cursor:pointer">
+    ⬇️ Instalar App
+  </button>
   <!-- church selector removed -->
   <div class="user-info" id="user-info-bar" style="display:none">
     <div class="user-badge">
@@ -1077,6 +1091,17 @@
       <p style="color:var(--text-muted);font-size:0.85rem">Nenhum usuário cadastrado ainda.</p>
     </div>
   </div>
+
+  <!-- Backup -->
+  <div class="cfg-section">
+    <h3>💾 Backup dos Dados</h3>
+    <p>Exporte todos os dados (igrejas, dependências, bens e usuários) para um arquivo JSON, ou importe um backup anterior para restaurar tudo.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:0.75rem">
+      <button class="btn btn-primary" onclick="exportBackupJSON()">⬇️ Exportar Backup (JSON)</button>
+      <button class="btn btn-outline" onclick="document.getElementById('backup-inp').click()">⬆️ Importar Backup (JSON)</button>
+      <input type="file" id="backup-inp" accept=".json,application/json" style="display:none" onchange="importBackupJSON(this)">
+    </div>
+  </div>
 </div>
 
 </main>
@@ -1273,49 +1298,35 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 
-<!-- Firebase SDK -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, writeBatch, deleteDoc, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://fyggsslndwsguavhduly.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Z2dzc2xuZHdzZ3VhdmhkdWx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzYyNDksImV4cCI6MjA5MTc1MjI0OX0.xxoROa9LNFBgSitG_sEP4IknAzIU7vxZuinRC_P0Lh4';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAyfIk5kE25pawnooylEiOuD23cCMa5r1M",
-  authDomain: "patrimonio-ccb-3be2a.firebaseapp.com",
-  projectId: "patrimonio-ccb-3be2a",
-  storageBucket: "patrimonio-ccb-3be2a.firebasestorage.app",
-  messagingSenderId: "79154407240",
-  appId: "1:79154407240:web:9a3fac00f907a86d96357d"
-};
+// Tabela principal com prefixo pedido pelo usuário (dados de igrejas/dependências/bens)
+const TB_MAIN  = 'CaieirasPatrimonio_main';
 
-const app = initializeApp(firebaseConfig);
-const firestore = getFirestore(app);
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window._sb = _sb;
 
-// ── Funções globais do Firestore expostas para o script principal ──
-window._firestore = firestore;
-window._fsDoc = doc;
-window._fsSetDoc = setDoc;
-window._fsGetDoc = getDoc;
-window._fsOnSnapshot = onSnapshot;
-window._fsCollection = collection;
-window._fsWriteBatch = writeBatch;
-window._fsDeleteDoc = deleteDoc;
-window._fsQuery = query;
-
-// Listener em tempo real no documento principal
+// Listener em tempo real (Supabase Realtime) na tabela principal
 function listenDB() {
-  const ref = doc(firestore, 'patrimonio', 'main');
-  window._fsUnsubscribe = onSnapshot(ref, (snap) => {
-    // Se há uma gravação pendente, ignora o snapshot para evitar sobrescrever dados locais
-    if(window._savePending) return;
-    if(snap.exists()) {
-      const data = snap.data();
-      // Só atualiza se veio de outra origem (evita loop)
-      if(data && data.bens) {
+  _sb.channel('caieiras-patrimonio-main-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TB_MAIN }, (payload) => {
+      // Se há uma gravação pendente, ignora o evento para evitar sobrescrever dados locais
+      if(window._savePending) return;
+      const data = payload.new;
+      if(data) {
         const prev = JSON.stringify({igrejas: window.db?.igrejas, dependencias: window.db?.dependencias, bens: window.db?.bens, nextId: window.db?.nextId});
-        const next = JSON.stringify({igrejas: data.igrejas, dependencias: data.dependencias, bens: data.bens, nextId: data.nextId});
+        const next = JSON.stringify({igrejas: data.igrejas, dependencias: data.dependencias, bens: data.bens, nextId: data.next_id});
         if(prev !== next) {
-          // Atualiza referência global e local
-          Object.assign(window.db, data);
+          Object.assign(window.db, {
+            igrejas: data.igrejas || [],
+            dependencias: data.dependencias || [],
+            bens: data.bens || [],
+            nextId: data.next_id || 1
+          });
           if(window._dbReady) {
             window.refreshAll && window.refreshAll();
             window.renderBens && window.renderBens();
@@ -1326,12 +1337,10 @@ function listenDB() {
           }
         }
       }
-    }
-  });
+    })
+    .subscribe();
 }
 
-// Aguarda o script principal inicializar
-window._firestoreReady = false;
 window.addEventListener('DOMContentLoaded', () => {
   setTimeout(listenDB, 100);
 });
@@ -1353,7 +1362,7 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 // ═══════════════════════════════════════════════
-// DATA — Firebase Firestore
+// DATA — Supabase (Postgres + Realtime)
 // ═══════════════════════════════════════════════
 let db = { igrejas:[], dependencias:[], bens:[], nextId:1 };
 let _saveTimeout = null;
@@ -1362,17 +1371,21 @@ window._dbReady = false;
 
 async function loadDB() {
   try {
-    const ref = window._fsDoc(window._firestore, 'patrimonio', 'main');
-    const snap = await window._fsGetDoc(ref);
-    if(snap.exists()) {
-      const data = snap.data();
-      if(data && data.bens) {
-        // Usa Object.assign para manter a mesma referência de objeto
-        Object.assign(db, data);
-        window.db = db;
-      }
+    const { data, error } = await window._sb.from(TB_MAIN).select('*').eq('id','main').maybeSingle();
+    if(error) throw error;
+    if(data) {
+      Object.assign(db, {
+        igrejas: data.igrejas || [],
+        dependencias: data.dependencias || [],
+        bens: data.bens || [],
+        nextId: data.next_id || 1
+      });
+      window.db = db;
+    } else {
+      // Cria o registro inicial se ainda não existir
+      await window._sb.from(TB_MAIN).upsert({ id:'main', igrejas:[], dependencias:[], bens:[], next_id:1 });
     }
-  } catch(e) { console.warn('Erro ao carregar do Firestore:', e); }
+  } catch(e) { console.warn('Erro ao carregar do Supabase:', e); }
 }
 
 let _savingTimer = null;
@@ -1387,24 +1400,25 @@ function saveDB() {
   window._savePending = true; // bloqueia o listener enquanto gravação está pendente
   _saveTimeout = setTimeout(async () => {
     try {
-      const ref = window._fsDoc(window._firestore, 'patrimonio', 'main');
       // Captura snapshot dos dados AGORA para evitar race condition
       const payload = {
+        id: 'main',
         igrejas: JSON.parse(JSON.stringify(db.igrejas)),
         dependencias: JSON.parse(JSON.stringify(db.dependencias)),
         bens: JSON.parse(JSON.stringify(db.bens)),
-        nextId: db.nextId,
-        updatedAt: new Date().toISOString()
+        next_id: db.nextId,
+        updated_at: new Date().toISOString()
       };
-      await window._fsSetDoc(ref, payload);
+      const { error } = await window._sb.from(TB_MAIN).upsert(payload);
+      if(error) throw error;
       // Atualiza referência global
       window.db = db;
     } catch(e) {
-      console.warn('Erro ao salvar no Firestore:', e);
+      console.warn('Erro ao salvar no Supabase:', e);
       toast('Erro ao salvar. Verifique a conexão.', 'err');
     } finally {
       _showSaving(false);
-      // Libera o listener 1s após a gravação para deixar o Firestore processar
+      // Libera o listener 1s após a gravação para deixar o Supabase processar
       setTimeout(() => { window._savePending = false; }, 1000);
     }
   }, 400);
@@ -1439,7 +1453,7 @@ function genBC(cod){ return cod.replace(/[^0-9]/g,'').padStart(13,'0').slice(-13
 let selectedChurch = '';
 let invChurch = ''; // filtro de igreja exclusivo da aba Inventário
 let relChurch = ''; // filtro de igreja exclusivo da aba Relatório
-// Expõe funções para o listener em tempo real do Firebase
+// Expõe funções para o listener em tempo real do Supabase
 window._exposeFns = function() {
   window.refreshAll = refreshAll;
   window.renderBens = renderBens;
@@ -2594,38 +2608,77 @@ document.getElementById('cam-overlay').addEventListener('click', function(e) {
 
 // ─────────────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════
-// AUTH — Login / Usuários
+// AUTH — Supabase Auth (login/senha gerenciados pelo Supabase)
 // ═══════════════════════════════════════════════
-let currentUser = null; // { login, nome, church, master }
+const AUTH_EMAIL_DOMAIN = '@caieiraspatrimonio.local';
+const ADMIN_USERS_FN_URL = `${SUPABASE_URL}/functions/v1/admin-users`;
+let currentUser = null; // { id, login, nome, church, master }
+let profiles = []; // lista de perfis (para tela de Configurações)
 
-// Carrega usuários do Firestore (coleção 'usuarios')
+function loginToEmail(login) { return login.toLowerCase().trim() + AUTH_EMAIL_DOMAIN; }
+
+// Carrega a lista de perfis (usuários) do Supabase
 async function loadUsers() {
   try {
-    const ref = window._fsDoc(window._firestore, 'patrimonio', 'usuarios');
-    const snap = await window._fsGetDoc(ref);
-    if(snap.exists()) { db.usuarios = snap.data().lista || []; }
-    else { db.usuarios = []; }
-  } catch(e) { db.usuarios = []; }
+    const { data, error } = await window._sb.from('CaieirasPatrimonio_perfis').select('*').order('created_at');
+    if(error) throw error;
+    profiles = data || [];
+  } catch(e) { profiles = []; }
 }
 
-async function saveUsers() {
-  try {
-    const ref = window._fsDoc(window._firestore, 'patrimonio', 'usuarios');
-    await window._fsSetDoc(ref, { lista: db.usuarios });
-  } catch(e) { toast('Erro ao salvar usuários.', 'err'); }
+// Chama a Edge Function admin-users (criar/editar/trocar senha/excluir)
+async function callAdminUsers(action, payload) {
+  const { data: sessionData } = await window._sb.auth.getSession();
+  const token = sessionData?.session?.access_token || '';
+  const resp = await fetch(ADMIN_USERS_FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ action, ...payload })
+  });
+  const out = await resp.json().catch(() => ({}));
+  if(!resp.ok || out.error) throw new Error(out.error || 'Erro ao processar solicitação.');
+  return out;
 }
 
-function doLogin() {
+async function doLogin() {
   const u = document.getElementById('login-user').value.trim().toLowerCase();
   const p = document.getElementById('login-pass').value;
   const err = document.getElementById('login-error');
   if(!u || !p) { err.textContent='Preencha usuário e senha.'; err.classList.add('show'); return; }
-  // Verifica usuários cadastrados
-  const found = (db.usuarios||[]).find(x => x.login.toLowerCase()===u && x.senha===p);
-  if(!found) { err.textContent='Usuário ou senha incorretos.'; err.classList.add('show'); return; }
+
+  const { data, error } = await window._sb.auth.signInWithPassword({ email: loginToEmail(u), password: p });
+  if(error || !data?.user) { err.textContent='Usuário ou senha incorretos.'; err.classList.add('show'); return; }
+
+  const ok = await loadCurrentProfile(data.user.id);
+  if(!ok) {
+    await window._sb.auth.signOut();
+    err.textContent='Perfil de usuário não encontrado. Contate o administrador.';
+    err.classList.add('show');
+    return;
+  }
   err.classList.remove('show');
-  currentUser = { login: found.login, nome: found.nome||found.login, church: found.church||'', master: !found.church };
   afterLogin();
+}
+
+async function loadCurrentProfile(userId) {
+  try {
+    const { data, error } = await window._sb.from('CaieirasPatrimonio_perfis').select('*').eq('id', userId).maybeSingle();
+    if(error || !data) return false;
+    currentUser = { id: data.id, login: data.login, nome: data.nome||data.login, church: data.church||'', master: !!data.is_master };
+    return true;
+  } catch(e) { return false; }
+}
+
+// Restaura sessão já ativa (ex: usuário deu refresh na página)
+async function restoreSession() {
+  try {
+    const { data } = await window._sb.auth.getSession();
+    if(data?.session?.user) {
+      const ok = await loadCurrentProfile(data.session.user.id);
+      if(ok) { afterLogin(); return true; }
+    }
+  } catch(e) {}
+  return false;
 }
 
 function afterLogin() {
@@ -2677,7 +2730,8 @@ function getChurchNameByCode(cod) {
   return ig ? ig.nome : cod;
 }
 
-function doLogout() {
+async function doLogout() {
+  await window._sb.auth.signOut();
   currentUser = null;
   document.getElementById('login-screen').classList.add('show');
   document.getElementById('login-user').value='';
@@ -2698,13 +2752,12 @@ function doLogout() {
 function renderUsersGrid() {
   const grid = document.getElementById('users-grid');
   if(!grid) return;
-  const usuarios = db.usuarios||[];
-  if(!usuarios.length) { grid.innerHTML='<p style="color:var(--text-muted);font-size:0.85rem">Nenhum usuário cadastrado.</p>'; return; }
+  if(!profiles.length) { grid.innerHTML='<p style="color:var(--text-muted);font-size:0.85rem">Nenhum usuário cadastrado.</p>'; return; }
   const colors=['#3b5bdb','#2f9e44','#e67700','#1971c2','#c2255c','#7048e8'];
-  grid.innerHTML = usuarios.map((u,i)=>{
+  grid.innerHTML = profiles.map((u,i)=>{
     const cor = colors[i%colors.length];
     const churchName = u.church ? (getChurchNameByCode(u.church)||u.church) : null;
-    return `<div class="user-card" onclick="openEditUser(${i})" style="cursor:pointer">
+    return `<div class="user-card" onclick="openEditUser('${u.id}')" style="cursor:pointer">
       <div class="user-card-avatar" style="background:${cor}">${(u.nome||u.login)[0].toUpperCase()}</div>
       <div class="user-card-info">
         <div class="user-card-name">${u.nome||u.login} <span style="font-size:0.72rem;font-weight:400;color:var(--text-muted)">@${u.login}</span></div>
@@ -2724,78 +2777,152 @@ function populateCfgChurches(selId) {
   });
 }
 
-function saveNewUser() {
+async function saveNewUser() {
   const login = document.getElementById('cfg-new-user').value.trim().toLowerCase();
   const senha = document.getElementById('cfg-new-pass').value;
   const nome  = document.getElementById('cfg-new-nome').value.trim();
   const church= document.getElementById('cfg-new-church').value;
   if(!login){ toast('Informe o usuário.','err'); return; }
   if(!senha || senha.length<4){ toast('Senha mínima de 4 caracteres.','err'); return; }
-  if(!db.usuarios) db.usuarios=[];
-  if(db.usuarios.find(x=>x.login===login)){ toast('Usuário já existe.','err'); return; }
-  db.usuarios.push({ login, senha, nome:nome||login, church });
-  saveUsers();
-  toast('Usuário cadastrado!','ok');
-  document.getElementById('cfg-new-user').value='';
-  document.getElementById('cfg-new-pass').value='';
-  document.getElementById('cfg-new-nome').value='';
-  document.getElementById('cfg-new-church').value='';
-  renderUsersGrid();
+  try {
+    await callAdminUsers('create', { login, senha, nome, church });
+    toast('Usuário cadastrado!','ok');
+    document.getElementById('cfg-new-user').value='';
+    document.getElementById('cfg-new-pass').value='';
+    document.getElementById('cfg-new-nome').value='';
+    document.getElementById('cfg-new-church').value='';
+    await loadUsers(); renderUsersGrid();
+  } catch(e) { toast(e.message || 'Erro ao cadastrar usuário.', 'err'); }
 }
 
-function openEditUser(idx) {
-  const u = db.usuarios[idx];
+function openEditUser(id) {
+  const u = profiles.find(x => x.id === id);
   if(!u) return;
-  document.getElementById('edit-user-idx').value=idx;
-  document.getElementById('edit-user-login').value=u.login;
-  document.getElementById('edit-user-pass').value='';
-  document.getElementById('edit-user-nome').value=u.nome||'';
+  document.getElementById('edit-user-idx').value = id;
+  document.getElementById('edit-user-login').value = u.login;
+  document.getElementById('edit-user-pass').value = '';
+  document.getElementById('edit-user-nome').value = u.nome || '';
   populateCfgChurches('edit-user-church');
-  document.getElementById('edit-user-church').value=u.church||'';
-  document.getElementById('edit-user-title').textContent='Editar: '+(u.nome||u.login);
+  document.getElementById('edit-user-church').value = u.church || '';
+  document.getElementById('edit-user-title').textContent = 'Editar: ' + (u.nome || u.login);
   document.getElementById('modal-edit-user').classList.add('open');
 }
 
-function updateUser() {
-  const idx=parseInt(document.getElementById('edit-user-idx').value);
-  const login=document.getElementById('edit-user-login').value.trim().toLowerCase();
-  const newPass=document.getElementById('edit-user-pass').value;
-  const nome=document.getElementById('edit-user-nome').value.trim();
-  const church=document.getElementById('edit-user-church').value;
+async function updateUser() {
+  const targetId = document.getElementById('edit-user-idx').value;
+  const login = document.getElementById('edit-user-login').value.trim().toLowerCase();
+  const newPass = document.getElementById('edit-user-pass').value;
+  const nome = document.getElementById('edit-user-nome').value.trim();
+  const church = document.getElementById('edit-user-church').value;
   if(!login){ toast('Informe o usuário.','err'); return; }
-  const dup = db.usuarios.findIndex(x=>x.login===login);
-  if(dup!==-1 && dup!==idx){ toast('Esse login já está em uso.','err'); return; }
-  db.usuarios[idx].login=login;
-  db.usuarios[idx].nome=nome||login;
-  db.usuarios[idx].church=church;
-  if(newPass && newPass.length>=4) db.usuarios[idx].senha=newPass;
-  saveUsers(); renderUsersGrid();
-  closeModal('modal-edit-user');
-  toast('Usuário atualizado!','ok');
+  try {
+    await callAdminUsers('update', { targetId, login, nome, church });
+    if(newPass) {
+      if(newPass.length < 4) { toast('Senha mínima de 4 caracteres.','err'); return; }
+      await callAdminUsers('updatePassword', { targetId, senha: newPass });
+    }
+    await loadUsers(); renderUsersGrid();
+    closeModal('modal-edit-user');
+    toast('Usuário atualizado!','ok');
+  } catch(e) { toast(e.message || 'Erro ao atualizar usuário.', 'err'); }
 }
 
-function deleteUser() {
-  const idx=parseInt(document.getElementById('edit-user-idx').value);
+async function deleteUser() {
+  const targetId = document.getElementById('edit-user-idx').value;
   if(!confirm('Excluir este usuário?')) return;
-  db.usuarios.splice(idx,1);
-  saveUsers(); renderUsersGrid();
-  closeModal('modal-edit-user');
-  toast('Usuário excluído.','ok');
+  try {
+    await callAdminUsers('delete', { targetId });
+    await loadUsers(); renderUsersGrid();
+    closeModal('modal-edit-user');
+    toast('Usuário excluído.','ok');
+  } catch(e) { toast(e.message || 'Erro ao excluir usuário.', 'err'); }
+}
+
+// ═══════════════════════════════════════════════
+// BACKUP — Exportar / Importar JSON
+// ═══════════════════════════════════════════════
+function exportBackupJSON() {
+  try {
+    const payload = {
+      __app: 'PatrimonioIgreja',
+      __backupVersion: 2,
+      exportedAt: new Date().toISOString(),
+      igrejas: db.igrejas || [],
+      dependencias: db.dependencias || [],
+      bens: db.bens || [],
+      nextId: db.nextId || 1
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.href = url;
+    a.download = `backup-patrimonio-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('Backup exportado com sucesso.', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao exportar backup.', 'err');
+  }
+}
+
+function importBackupJSON(input) {
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if(!data || typeof data !== 'object') throw new Error('Arquivo inválido.');
+
+      const igrejas = Array.isArray(data.igrejas) ? data.igrejas : [];
+      const dependencias = Array.isArray(data.dependencias) ? data.dependencias : [];
+      const bens = Array.isArray(data.bens) ? data.bens : [];
+      const nextId = typeof data.nextId === 'number' ? data.nextId : (db.nextId || 1);
+
+      const totalItens = igrejas.length + dependencias.length + bens.length;
+      const confirmMsg = `Este backup contém ${igrejas.length} igreja(s), ${dependencias.length} dependência(s) e ${bens.length} bem(ns).\n\nIsso irá SUBSTITUIR os dados de igrejas/dependências/bens. Os usuários (login/senha) NÃO fazem parte deste backup — são gerenciados separadamente pelo Supabase Auth. Deseja continuar?`;
+      if(!confirm(confirmMsg)) { input.value = ''; return; }
+
+      db.igrejas = igrejas;
+      db.dependencias = dependencias;
+      db.bens = bens;
+      db.nextId = nextId;
+      window.db = db;
+
+      await saveDB();
+
+      if(typeof renderIgGrid === 'function') renderIgGrid();
+      if(typeof renderDepGrid === 'function') renderDepGrid();
+      if(typeof renderBens === 'function') renderBens();
+      if(typeof renderRel === 'function') renderRel();
+
+      toast(`Backup importado com sucesso (${totalItens} registro(s)).`, 'ok');
+    } catch(e) {
+      console.error(e);
+      toast('Erro ao importar backup: arquivo JSON inválido.', 'err');
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
 }
 
 async function init() {
-  // Aguarda Firebase estar disponível
+  // Aguarda o cliente Supabase estar disponível
   let tries = 0;
-  while(!window._firestore && tries < 60) { await new Promise(r=>setTimeout(r,100)); tries++; }
+  while(!window._sb && tries < 60) { await new Promise(r=>setTimeout(r,100)); tries++; }
 
-  // Carrega dados do Firestore
+  // Carrega dados do Supabase
   await loadDB();
   await loadUsers();
 
-  // Se não há usuários cadastrados, cria o usuário master padrão
-  if(!db.usuarios || db.usuarios.length===0) {
-    db.usuarios = [{ login:'master', senha:'master123', nome:'Administrador', church:'' }];
-    await saveUsers();
+  // Aviso apenas se não houver nenhum usuário cadastrado no banco
+  if(!profiles || profiles.length===0) {
+    console.warn('Nenhum usuário cadastrado ainda. O primeiro usuário criado pelo formulário "Novo Usuário" será automaticamente o master.');
   }
 
   // selectedChurch sempre usa db (mesma referência)
@@ -2816,11 +2943,46 @@ async function init() {
   window._dbReady = true;
   if(window._exposeFns) window._exposeFns();
 
-  // Mostra tela de login
-  document.getElementById('login-screen').classList.add('show');
-  setTimeout(()=>document.getElementById('login-user').focus(), 300);
+  // Tenta restaurar uma sessão de login já ativa; senão mostra a tela de login
+  const restored = await restoreSession();
+  if(!restored) {
+    document.getElementById('login-screen').classList.add('show');
+    setTimeout(()=>document.getElementById('login-user').focus(), 300);
+  }
 }
 init();
+
+// ═══════════════════════════════════════════════
+// PWA — Registro do Service Worker + Prompt de instalação
+// ═══════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Falha ao registrar Service Worker:', e));
+  });
+}
+
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'flex';
+});
+
+function installPWA() {
+  const btn = document.getElementById('pwa-install-btn');
+  if (!_deferredInstallPrompt) return;
+  _deferredInstallPrompt.prompt();
+  _deferredInstallPrompt.userChoice.finally(() => {
+    _deferredInstallPrompt = null;
+    if (btn) btn.style.display = 'none';
+  });
+}
+
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'none';
+});
 </script>
 </body>
 </html>
