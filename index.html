@@ -43,6 +43,7 @@
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
   body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
   /* ── HEADER ── */
@@ -118,7 +119,12 @@
   .church-empty { text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.82rem; }
 
   /* ── TABS ── */
-  .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; gap: 2px; }
+  .tabs {
+    display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; gap: 2px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex-shrink: 0; }
   .tab {
     padding: 12px 20px; font-size: 0.83rem; font-weight: 500;
     color: var(--text-muted); cursor: pointer; border: none; background: none;
@@ -520,9 +526,34 @@
   .scan-input-row .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 7px; }
 
   @media(max-width:768px) {
+    body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+    header { padding: 0 1rem; height: 56px; }
+    .logo h1 { font-size: 1rem; }
+    .logo-icon { width: 30px; height: 30px; }
+    #user-info-bar { gap: 8px; }
+    .user-badge { gap: 8px; }
+    .user-name { max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Barra de abas vira menu inferior fixo (bottom navigation) */
+    .tabs {
+      position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 150;
+      overflow-x: visible; padding: 4px 2px calc(4px + env(safe-area-inset-bottom));
+      border-bottom: none; border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+      justify-content: space-around; gap: 0;
+    }
+    .tab {
+      flex: 1 1 0; flex-direction: column; justify-content: center;
+      padding: 6px 2px 5px; gap: 3px; border-bottom: none; border-radius: 10px;
+      font-size: 0.62rem; min-width: 0;
+    }
+    .tab svg { width: 19px; height: 19px; flex-shrink: 0; }
+    .tab.active { background: var(--accent-light); }
+    .tab-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .tab .cnt { padding: 0 5px; font-size: 0.6rem; }
+
     main { padding: 1.25rem 1rem; }
-    header { padding: 0 1rem; }
-    .tabs { padding: 0 1rem; }
+    .toast { bottom: calc(76px + env(safe-area-inset-bottom)); right: 1rem; left: 1rem; justify-content: center; }
     .scanner-layout { grid-template-columns: 1fr; }
     .progress-card { position: static; }
     .form-grid { grid-template-columns: 1fr; }
@@ -652,27 +683,27 @@
 <div class="tabs">
   <button class="tab active" onclick="showTab('scanner',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    Inventário
+    <span class="tab-label">Inventário</span>
   </button>
   <button class="tab" onclick="showTab('bens',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
-    Bens <span class="cnt" id="cnt-bens">0</span>
+    <span class="tab-label">Bens <span class="cnt" id="cnt-bens">0</span></span>
   </button>
   <button class="tab" onclick="showTab('cadastros',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-    Cadastros
+    <span class="tab-label">Cadastros</span>
   </button>
   <button class="tab" onclick="showTab('importacao',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-    Importação
+    <span class="tab-label">Importação</span>
   </button>
   <button class="tab" onclick="showTab('relatorio',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-    Relatório
+    <span class="tab-label">Relatório</span>
   </button>
   <button class="tab" id="tab-btn-config" onclick="showTab('config',this)" style="display:none">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-    Configurações
+    <span class="tab-label">Configurações</span>
   </button>
 </div>
 
