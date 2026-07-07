@@ -1,160 +1,2995 @@
-// ═══════════════════════════════════════════════════════════════
-// Edge Function: admin-users
-// Gerencia usuários (criar / editar / trocar senha / excluir) usando
-// a service_role key do Supabase — que NUNCA fica exposta no app.
-// Só quem for "master" (checado via tabela de perfis) pode chamar,
-// exceto na criação do primeiro usuário (bootstrap).
-// ═══════════════════════════════════════════════════════════════
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatrimônioIgreja — Inventário</title>
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-const EMAIL_DOMAIN = '@caieiraspatrimonio.local'
-const PERFIS_TABLE = 'CaieirasPatrimonio_perfis'
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3b5bdb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="PatrimônioIgreja">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Lora:ital,wght@0,600;1,400&display=swap');
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-}
-
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json' }
-  })
-}
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
-
-  let body
-  try {
-    body = await req.json()
-  } catch {
-    return json({ error: 'Corpo da requisição inválido.' }, 400)
+  :root {
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface2: #f0f3fa;
+    --border: #e2e7f0;
+    --border2: #d0d8ea;
+    --accent: #3b5bdb;
+    --accent-light: #eef1fd;
+    --accent2: #4c6ef5;
+    --text: #1a2035;
+    --text-muted: #7a8aab;
+    --text-light: #a8b5cc;
+    --green: #2f9e44;
+    --green-bg: #ebfbee;
+    --red: #e03131;
+    --red-bg: #fff5f5;
+    --yellow: #e67700;
+    --yellow-bg: #fff9db;
+    --blue: #1971c2;
+    --shadow-sm: 0 1px 3px rgba(30,50,100,0.07), 0 1px 2px rgba(30,50,100,0.04);
+    --shadow: 0 4px 16px rgba(30,50,100,0.08), 0 1px 4px rgba(30,50,100,0.05);
+    --shadow-lg: 0 12px 40px rgba(30,50,100,0.12), 0 4px 12px rgba(30,50,100,0.06);
   }
 
-  const action = body.action
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
-  try {
-    // Bootstrap: se ainda não existe NENHUM perfil, permite criar o
-    // primeiro usuário (que será master) sem exigir autenticação prévia.
-    const { count } = await admin
-      .from(PERFIS_TABLE)
-      .select('*', { count: 'exact', head: true })
-    const isBootstrap = action === 'create' && (count ?? 0) === 0
-
-    let callerIsMaster = false
-    if (!isBootstrap) {
-      const authHeader = req.headers.get('Authorization') || ''
-      const token = authHeader.replace('Bearer ', '').trim()
-      if (!token) return json({ error: 'Não autenticado.' }, 401)
-
-      const { data: userData, error: userErr } = await admin.auth.getUser(token)
-      if (userErr || !userData?.user) return json({ error: 'Sessão inválida.' }, 401)
-
-      const { data: callerProfile } = await admin
-        .from(PERFIS_TABLE)
-        .select('is_master')
-        .eq('id', userData.user.id)
-        .maybeSingle()
-
-      callerIsMaster = !!callerProfile?.is_master
-      if (!callerIsMaster) {
-        return json({ error: 'Apenas usuários master podem gerenciar usuários.' }, 403)
-      }
-    }
-
-    // ── Criar usuário ──
-    if (action === 'create') {
-      const login = (body.login || '').toLowerCase().trim()
-      const senha = body.senha || ''
-      const nome = (body.nome || '').trim()
-      const church = body.church || ''
-
-      if (!login) return json({ error: 'Informe o usuário.' }, 400)
-      if (!senha || senha.length < 4) return json({ error: 'Senha mínima de 4 caracteres.' }, 400)
-
-      const { data: existing } = await admin
-        .from(PERFIS_TABLE).select('id').eq('login', login).maybeSingle()
-      if (existing) return json({ error: 'Usuário já existe.' }, 400)
-
-      const email = login + EMAIL_DOMAIN
-      const { data: created, error: createErr } = await admin.auth.admin.createUser({
-        email, password: senha, email_confirm: true
-      })
-      if (createErr) return json({ error: createErr.message }, 400)
-
-      const { error: profErr } = await admin.from(PERFIS_TABLE).insert({
-        id: created.user.id,
-        login,
-        nome: nome || login,
-        church: isBootstrap ? '' : church,
-        is_master: isBootstrap ? true : !church
-      })
-      if (profErr) {
-        await admin.auth.admin.deleteUser(created.user.id)
-        return json({ error: profErr.message }, 400)
-      }
-      return json({ ok: true, bootstrap: isBootstrap })
-    }
-
-    // ── Editar usuário (login/nome/igreja) ──
-    if (action === 'update') {
-      const targetId = body.targetId
-      if (!targetId) return json({ error: 'targetId obrigatório.' }, 400)
-
-      const login = body.login ? String(body.login).toLowerCase().trim() : undefined
-      const nome = body.nome
-      const church = body.church
-
-      if (login) {
-        const { data: dup } = await admin
-          .from(PERFIS_TABLE).select('id').eq('login', login).neq('id', targetId).maybeSingle()
-        if (dup) return json({ error: 'Esse login já está em uso.' }, 400)
-
-        const { error: authErr } = await admin.auth.admin.updateUserById(targetId, { email: login + EMAIL_DOMAIN })
-        if (authErr) return json({ error: authErr.message }, 400)
-      }
-
-      const updatePayload = {}
-      if (login) updatePayload.login = login
-      if (nome !== undefined) updatePayload.nome = nome
-      if (church !== undefined) updatePayload.church = church
-      updatePayload.is_master = !church
-
-      const { error: profErr } = await admin.from(PERFIS_TABLE).update(updatePayload).eq('id', targetId)
-      if (profErr) return json({ error: profErr.message }, 400)
-      return json({ ok: true })
-    }
-
-    // ── Trocar senha de outro usuário ──
-    if (action === 'updatePassword') {
-      const targetId = body.targetId
-      const senha = body.senha || ''
-      if (!targetId) return json({ error: 'targetId obrigatório.' }, 400)
-      if (!senha || senha.length < 4) return json({ error: 'Senha mínima de 4 caracteres.' }, 400)
-
-      const { error } = await admin.auth.admin.updateUserById(targetId, { password: senha })
-      if (error) return json({ error: error.message }, 400)
-      return json({ ok: true })
-    }
-
-    // ── Excluir usuário ──
-    if (action === 'delete') {
-      const targetId = body.targetId
-      if (!targetId) return json({ error: 'targetId obrigatório.' }, 400)
-
-      const { error } = await admin.auth.admin.deleteUser(targetId)
-      if (error) return json({ error: error.message }, 400)
-      return json({ ok: true })
-    }
-
-    return json({ error: 'Ação desconhecida.' }, 400)
-  } catch (e) {
-    return json({ error: String(e) }, 500)
+  /* ── HEADER ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 62px; position: sticky; top: 0; z-index: 100;
+    box-shadow: var(--shadow-sm);
   }
-})
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; color: white;
+    box-shadow: 0 2px 8px rgba(59,91,219,0.35);
+  }
+  .logo h1 { font-family: 'Lora', serif; font-size: 1.15rem; color: var(--text); font-weight: 600; }
+  .logo span { color: var(--accent); }
+
+  /* Church selector in header */
+  .church-selector-wrap {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .church-selector-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+
+  /* ── MODERN CHURCH FILTER ── */
+  .church-filter-container { position: relative; }
+  .church-filter-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 14px;
+    background: var(--accent-light);
+    border: 1.5px solid #c5d0f8;
+    border-radius: 10px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.85rem; font-weight: 600;
+    color: var(--accent); cursor: pointer;
+    transition: all 0.15s; min-width: 220px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .church-filter-btn:hover { background: #e3e8fd; border-color: var(--accent); }
+  .church-filter-btn .caret { margin-left: auto; opacity: 0.6; font-size: 0.7rem; }
+  .church-dropdown {
+    display: none; position: absolute; top: calc(100% + 6px); right: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-lg);
+    z-index: 200; min-width: 300px; overflow: hidden;
+    animation: dropIn 0.15s ease;
+  }
+  @keyframes dropIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  .church-dropdown.open { display: block; }
+  .church-search-wrap { padding: 10px; border-bottom: 1px solid var(--border); }
+  .church-search-input {
+    width: 100%; padding: 8px 12px; border: 1.5px solid var(--border2);
+    border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.83rem; outline: none; background: var(--bg);
+    transition: border-color 0.15s;
+  }
+  .church-search-input:focus { border-color: var(--accent); }
+  .church-list { max-height: 250px; overflow-y: auto; padding: 4px; }
+  .church-list-item {
+    padding: 9px 12px; border-radius: 8px; cursor: pointer;
+    font-size: 0.83rem; display: flex; align-items: center; gap: 10px;
+    transition: background 0.1s; color: var(--text);
+  }
+  .church-list-item:hover { background: var(--surface2); }
+  .church-list-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+  .church-list-item .church-code { font-size: 0.7rem; color: var(--text-muted); font-weight: 500; background: var(--surface2); padding: 2px 6px; border-radius: 4px; }
+  .church-list-item.active .church-code { background: rgba(59,91,219,0.1); color: var(--accent); }
+  .church-empty { text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.82rem; }
+
+  /* ── TABS ── */
+  .tabs {
+    display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; gap: 2px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex-shrink: 0; }
+  .tab {
+    padding: 12px 20px; font-size: 0.83rem; font-weight: 500;
+    color: var(--text-muted); cursor: pointer; border: none; background: none;
+    font-family: 'Plus Jakarta Sans', sans-serif; border-bottom: 2.5px solid transparent;
+    transition: all 0.15s; display: flex; align-items: center; gap: 7px;
+    letter-spacing: 0.01em;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab .cnt {
+    background: var(--surface2); border-radius: 20px; padding: 1px 8px;
+    font-size: 0.7rem; color: var(--text-muted); font-weight: 600;
+  }
+  .tab.active .cnt { background: var(--accent-light); color: var(--accent); }
+
+  main { padding: 1.75rem 2rem; max-width: 1160px; margin: 0 auto; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── PAGE HEADER ── */
+  .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; }
+  .page-header-left h2 { font-family: 'Lora', serif; font-size: 1.5rem; font-weight: 600; color: var(--text); }
+  .page-header-left p { color: var(--text-muted); font-size: 0.82rem; margin-top: 3px; }
+
+  /* ── SCANNER ── */
+  .scanner-layout { display: grid; grid-template-columns: 1fr 340px; gap: 1.5rem; align-items: start; }
+  .scan-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+  .scan-input-area { padding: 1.4rem; border-bottom: 1px solid var(--border); }
+  .scan-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 10px; }
+  .scan-input-row {
+    display: flex; gap: 8px; align-items: center;
+    background: var(--bg); border: 2px solid var(--border);
+    border-radius: 12px; padding: 9px 14px; transition: border-color 0.2s;
+  }
+  .scan-input-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.1); }
+  .scan-cursor { width: 3px; height: 20px; background: var(--accent); border-radius: 2px; animation: blink 1s step-end infinite; flex-shrink: 0; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  .scan-input-row input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-family: monospace; font-size: 1.05rem; letter-spacing: 0.05em; }
+  .scan-input-row input::placeholder { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; color: var(--text-light); letter-spacing: 0; }
+  .live-sug { display: none; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .sug-item { padding: 7px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center; transition: all 0.1s; }
+  .sug-item:hover { background: var(--accent-light); border-color: #c5d0f8; color: var(--accent); }
+  .result-area { padding: 1.4rem; }
+  .state-empty, .state-notfound { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); }
+  .state-empty .icon, .state-notfound .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+  .state-empty p, .state-notfound p { font-size: 0.85rem; }
+  .result-name { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 4px; line-height: 1.3; }
+  .result-code { font-size: 0.73rem; color: var(--text-muted); font-family: monospace; margin-bottom: 1rem; }
+  .checks { display: flex; flex-direction: column; gap: 8px; margin-bottom: 1rem; }
+  .chk { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); transition: all 0.2s; }
+  .chk.ok { border-color: rgba(47,158,68,0.35); background: var(--green-bg); }
+  .chk.warn { border-color: rgba(230,119,0,0.3); background: var(--yellow-bg); }
+  .chk.err { border-color: rgba(224,49,49,0.3); background: var(--red-bg); }
+  .chk-icon { font-size: 1.1rem; flex-shrink: 0; }
+  .chk-text strong { font-size: 0.8rem; display: block; color: var(--text); }
+  .chk-text span { font-size: 0.72rem; color: var(--text-muted); }
+  .chk.ok .chk-text span { color: var(--green); }
+  .chk.warn .chk-text span { color: var(--yellow); }
+  .chk.err .chk-text span { color: var(--red); }
+  .dep-section { margin-bottom: 1rem; }
+  .section-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
+  .dep-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .dep-chip { padding: 5px 13px; border-radius: 20px; font-size: 0.73rem; cursor: pointer; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-muted); transition: all 0.15s; font-weight: 500; }
+  .dep-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .dep-chip.sel { background: var(--accent-light); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .dep-chip.current { border-color: #1971c2; color: var(--blue); }
+  .dep-chip.current.sel { background: #e7f5ff; }
+  .dep-custom { display: flex; gap: 6px; }
+  .dep-custom input { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.8rem; outline: none; transition: border-color 0.15s; }
+  .dep-custom input:focus { border-color: var(--accent); }
+  .obs-section textarea { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; resize: vertical; min-height: 60px; outline: none; transition: border-color 0.15s; }
+  .obs-section textarea:focus { border-color: var(--accent); }
+  .action-btns { display: flex; gap: 8px; margin-top: 1rem; }
+
+  /* PROGRESS CARD */
+  .progress-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.4rem; position: sticky; top: 110px; box-shadow: var(--shadow); }
+  .prog-title { font-weight: 700; margin-bottom: 1rem; font-size: 0.9rem; color: var(--text); }
+  .prog-bar-wrap { margin-bottom: 1.2rem; }
+  .prog-bar-top { display: flex; justify-content: space-between; font-size: 0.73rem; color: var(--text-muted); margin-bottom: 7px; font-weight: 500; }
+  .prog-bar { height: 8px; background: var(--surface2); border-radius: 8px; overflow: hidden; }
+  .prog-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 8px; transition: width 0.4s ease; }
+  .prog-stat { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+  .prog-stat:last-of-type { border-bottom: none; }
+  .prog-stat .lbl { color: var(--text-muted); display: flex; align-items: center; gap: 7px; font-weight: 500; }
+  .prog-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dep-ctx { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  .dep-ctx-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
+  .dep-ctx select { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; outline: none; }
+  .dep-ctx-hint { font-size: 0.68rem; color: var(--text-light); margin-top: 5px; }
+
+  /* ── BENS TAB ── */
+  .filter-bar {
+    display: flex; gap: 10px; margin-bottom: 1.25rem; flex-wrap: wrap;
+    background: var(--surface); padding: 14px 16px; border-radius: 14px;
+    border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+    align-items: center;
+  }
+  .search-box {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 9px; padding: 7px 13px; flex: 1; min-width: 200px;
+    transition: border-color 0.15s;
+  }
+  .search-box:focus-within { border-color: var(--accent); }
+  .search-box input { background: none; border: none; outline: none; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; width: 100%; }
+  .search-icon { color: var(--text-muted); font-size: 0.9rem; }
+  .filter-select {
+    background: var(--bg); border: 1.5px solid var(--border); border-radius: 9px;
+    padding: 7px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.82rem; outline: none; cursor: pointer; transition: border-color 0.15s;
+  }
+  .filter-select:focus { border-color: var(--accent); }
+
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-sm); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  thead th { background: var(--surface2); padding: 10px 14px; text-align: left; font-weight: 700; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 10px 14px; vertical-align: middle; }
+  .tag { font-family: monospace; font-size: 0.73rem; color: var(--text-muted); background: var(--surface2); padding: 2px 7px; border-radius: 5px; }
+
+  .badge { display: inline-flex; padding: 3px 9px; border-radius: 20px; font-size: 0.68rem; font-weight: 600; }
+  .bg { background: var(--green-bg); color: var(--green); }
+  .by { background: var(--yellow-bg); color: var(--yellow); }
+  .br { background: var(--red-bg); color: var(--red); }
+  .bm { background: var(--surface2); color: var(--text-muted); }
+
+  .inv-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .id-ok { background: var(--green); }
+  .id-prob { background: var(--yellow); }
+  .id-pend { background: #cbd5e1; }
+
+  .val-cell { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .val-deprec { color: var(--text-muted); font-size: 0.75rem; }
+
+  .pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--text-muted); background: var(--surface2); }
+  .pag-btns { display: flex; gap: 4px; }
+  .pag-btns button { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.75rem; transition: all 0.15s; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500; }
+  .pag-btns button:hover, .pag-btns button.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  /* TOTALS BAR */
+  .totals-bar {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.25rem;
+  }
+  .total-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; box-shadow: var(--shadow-sm); }
+  .total-card .tc-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 5px; }
+  .total-card .tc-val { font-size: 1.25rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  .total-card .tc-val.green { color: var(--green); }
+  .total-card .tc-val.blue { color: var(--accent); }
+
+  /* BUTTONS */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 9px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s; white-space: nowrap; }
+  .btn-primary { background: var(--accent); color: white; box-shadow: 0 2px 8px rgba(59,91,219,0.3); }
+  .btn-primary:hover { background: var(--accent2); box-shadow: 0 4px 12px rgba(59,91,219,0.4); transform: translateY(-1px); }
+  .btn-confirm { background: var(--green); color: white; flex: 1; justify-content: center; font-size: 0.88rem; box-shadow: 0 2px 8px rgba(47,158,68,0.3); }
+  .btn-confirm:hover { background: #37b24d; }
+  .btn-problem { background: var(--red-bg); color: var(--red); border: 1.5px solid rgba(224,49,49,0.3); }
+  .btn-problem:hover { background: #ffe3e3; }
+  .btn-outline { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
+  .btn-outline:hover { background: var(--surface2); border-color: var(--border2); }
+  .btn-ghost { background: transparent; color: var(--text-muted); }
+  .btn-ghost:hover { color: var(--text); background: var(--surface2); }
+  .btn-sm { padding: 6px 12px; font-size: 0.78rem; }
+  .btn-danger { background: var(--red-bg); color: var(--red); border: 1.5px solid rgba(224,49,49,0.25); }
+  .btn-danger:hover { background: #ffe3e3; }
+
+  /* MODAL */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(26,32,53,0.55); backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center; padding: 1.5rem; }
+  .modal-overlay.open { display: flex; animation: fadeIn 0.15s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: slideUp 0.2s ease; }
+  @keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .modal-header { padding: 1.4rem 1.75rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-header h3 { font-family: 'Lora', serif; font-size: 1.15rem; font-weight: 600; }
+  .modal-body { padding: 1.75rem; }
+  .modal-footer { padding: 1.1rem 1.75rem; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface2); border-radius: 0 0 18px 18px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .form-full { grid-column: 1 / -1; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
+  input[type=text], input[type=date], input[type=number], select, textarea { background: var(--bg); border: 1.5px solid var(--border); border-radius: 9px; padding: 9px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; transition: border-color 0.15s, box-shadow 0.15s; outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.1); }
+  select option { background: var(--surface); }
+
+  /* TOAST */
+  .toast { position: fixed; bottom: 1.75rem; right: 1.75rem; background: var(--text); color: white; border-radius: 12px; padding: 12px 20px; font-size: 0.83rem; z-index: 300; display: none; align-items: center; gap: 10px; box-shadow: var(--shadow-lg); font-weight: 500; }
+  .toast.show { display: flex; animation: fadeUp 0.2s ease; }
+  .toast.ok-toast { background: var(--green); }
+  .toast.err-toast { background: var(--red); }
+  @keyframes fadeUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .scan-flash { animation: flash 0.25s ease; }
+  @keyframes flash { 0%,100% { background: var(--surface); } 50% { background: var(--accent-light); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fb-saving { position: fixed; top: 70px; right: 1rem; background: var(--accent); color: white;
+    font-size: 0.72rem; font-weight: 600; padding: 5px 12px; border-radius: 20px;
+    display: none; align-items: center; gap: 6px; z-index: 500; box-shadow: var(--shadow); }
+  .fb-saving.show { display: flex; animation: fadeIn 0.2s ease; }
+
+  /* ── CADASTROS TABS ── */
+  .sub-tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; background: var(--surface2); padding: 4px; border-radius: 12px; width: fit-content; border: 1px solid var(--border); }
+  .sub-tab { padding: 7px 18px; border-radius: 9px; font-size: 0.82rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s; }
+  .sub-tab.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
+  .sub-tab:hover:not(.active) { color: var(--text); }
+
+  /* CARD LISTS */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+  .entity-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s; }
+  .entity-card:hover { box-shadow: var(--shadow); }
+  .entity-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+  .entity-card-title { font-weight: 700; font-size: 0.92rem; color: var(--text); line-height: 1.3; }
+  .entity-card-code { font-size: 0.7rem; color: var(--text-muted); font-family: monospace; margin-top: 2px; }
+  .entity-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .entity-card-body { font-size: 0.78rem; color: var(--text-muted); }
+  .entity-card-body p { margin: 3px 0; display: flex; align-items: center; gap: 5px; }
+  .entity-card-body strong { color: var(--text); font-weight: 600; }
+
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+  .section-header h3 { font-family: 'Lora', serif; font-size: 1.1rem; font-weight: 600; }
+  .section-header p { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
+
+  /* EMPTY STATE */
+  .empty-state { text-align: center; padding: 3rem 2rem; color: var(--text-muted); }
+  .empty-state .es-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+  .empty-state h3 { font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .empty-state p { font-size: 0.83rem; }
+
+  /* RELATÓRIO */
+  .rel-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+  .rel-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.25rem; box-shadow: var(--shadow-sm); }
+  .rel-card-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 6px; }
+  .rel-card-val { font-size: 1.8rem; font-weight: 700; }
+
+  /* ── IMPORTAÇÃO ── */
+  .import-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
+  .import-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; box-shadow: var(--shadow); }
+  .import-panel h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; margin-bottom: 1.25rem; }
+
+  .drop-zone {
+    border: 2px dashed var(--border2); border-radius: 14px; padding: 2.5rem 1.5rem;
+    text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg);
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
+  .drop-zone .dz-icon { font-size: 2.8rem; margin-bottom: 12px; }
+  .drop-zone .dz-title { font-weight: 700; font-size: 0.95rem; color: var(--text); margin-bottom: 4px; }
+  .drop-zone .dz-sub { font-size: 0.78rem; color: var(--text-muted); }
+  .drop-zone .dz-formats { display: inline-flex; gap: 5px; margin-top: 12px; }
+  .dz-tag { background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); font-family: monospace; }
+  .drop-zone.has-file { border-style: solid; border-color: var(--green); background: var(--green-bg); }
+  .drop-zone.has-file .dz-icon-wrap { color: var(--green); }
+
+  .col-map-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.75rem; }
+  .col-map-table th { text-align: left; font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .col-map-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .col-map-table tr:last-child td { border-bottom: none; }
+  .col-field { font-weight: 600; font-size: 0.78rem; }
+  .col-detected { font-family: monospace; font-size: 0.72rem; }
+  .col-ok { color: var(--green); }
+  .col-miss { color: var(--red); }
+  .col-badge-ok { display: inline-flex; align-items: center; gap: 4px; background: var(--green-bg); color: var(--green); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 700; }
+  .col-badge-miss { display: inline-flex; align-items: center; gap: 4px; background: var(--red-bg); color: var(--red); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 700; }
+
+  .imp-preview-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+  .imp-preview-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface2); }
+  .imp-preview-header h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; }
+  .imp-preview-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+  .imp-preview-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; min-width: 900px; }
+  .imp-preview-table thead th { background: var(--accent); color: white; padding: 9px 12px; text-align: left; font-weight: 700; font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.06em; position: sticky; top: 0; z-index: 1; }
+  .imp-preview-table tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  .imp-preview-table tbody tr:hover { background: var(--surface2); }
+  .imp-preview-table tbody tr.dup-row { background: #fff9db; }
+  .imp-preview-table tbody tr.dup-row:hover { background: #fff3cd; }
+  .imp-preview-table td { padding: 7px 12px; }
+  .imp-preview-table .pv-code { font-family: monospace; font-size: 0.72rem; color: var(--text-muted); background: var(--surface2); padding: 2px 6px; border-radius: 4px; }
+  .imp-preview-table .pv-dup { background: var(--yellow-bg); color: var(--yellow); border-radius: 4px; padding: 2px 7px; font-size: 0.68rem; font-weight: 700; }
+  .imp-preview-table .pv-new { background: var(--green-bg); color: var(--green); border-radius: 4px; padding: 2px 7px; font-size: 0.68rem; font-weight: 700; }
+
+  .imp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .imp-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem; box-shadow: var(--shadow-sm); text-align: center; }
+  .imp-stat .is-val { font-size: 1.6rem; font-weight: 700; }
+  .imp-stat .is-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-top: 2px; }
+
+  .imp-log { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-sm); }
+  .imp-log-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); background: var(--surface2); display: flex; align-items: center; justify-content: space-between; }
+  .imp-log-header h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; }
+  .imp-log-body { max-height: 200px; overflow-y: auto; padding: 0.75rem; }
+  .log-item { display: flex; align-items: flex-start; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 0.78rem; margin-bottom: 3px; }
+  .log-item.log-ok { background: var(--green-bg); color: var(--green); }
+  .log-item.log-warn { background: var(--yellow-bg); color: var(--yellow); }
+  .log-item.log-err { background: var(--red-bg); color: var(--red); }
+  .log-item.log-info { background: var(--accent-light); color: var(--accent); }
+  .log-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; background: currentColor; }
+
+  /* ── CÂMERA SCANNER ── */
+  .btn-camera {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 9px;
+    background: var(--surface2); border: 1.5px solid var(--border2);
+    color: var(--text-muted); font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .btn-camera:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+  .btn-camera.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+  .cam-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(10,15,30,0.85); z-index: 1000;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(6px);
+    animation: fadeIn 0.2s ease;
+  }
+  .cam-overlay.open { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .cam-modal {
+    background: var(--surface); border-radius: 20px;
+    box-shadow: var(--shadow-lg); overflow: hidden;
+    width: 100%; max-width: 440px;
+    margin: 1rem;
+    animation: slideUp 0.22s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(30px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+
+  .cam-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+  }
+  .cam-header h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; }
+  .cam-close {
+    width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--surface2); cursor: pointer; font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .cam-close:hover { background: var(--red-bg); border-color: rgba(224,49,49,0.3); }
+
+  .cam-body { position: relative; background: #000; aspect-ratio: 4/3; overflow: hidden; }
+  #cam-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .cam-viewfinder {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .cam-frame {
+    width: 72%; height: 35%;
+    border: 2.5px solid rgba(255,255,255,0.9);
+    border-radius: 12px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.42);
+    position: relative;
+  }
+  .cam-frame::before, .cam-frame::after {
+    content: ''; position: absolute;
+    width: 28px; height: 28px;
+    border-color: var(--accent); border-style: solid;
+    border-radius: 3px;
+  }
+  .cam-frame::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+  .cam-frame::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+  .cam-scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    border-radius: 2px;
+    animation: scanLine 2s ease-in-out infinite;
+    top: 0;
+  }
+  @keyframes scanLine {
+    0%   { top: 8%; opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { top: 92%; opacity: 0; }
+  }
+
+  .cam-status {
+    padding: 0.75rem 1.25rem; font-size: 0.82rem; font-weight: 500;
+    text-align: center; color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    min-height: 44px; display: flex; align-items: center; justify-content: center;
+    gap: 8px;
+  }
+  .cam-status.success { color: var(--green); background: var(--green-bg); }
+  .cam-status.error { color: var(--red); }
+
+  .cam-sel-wrap {
+    padding: 0.75rem 1.25rem; border-top: 1px solid var(--border);
+    display: none;
+  }
+  .cam-sel-wrap.visible { display: block; }
+  .cam-sel-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
+  #cam-sel {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--border2);
+    border-radius: 8px; padding: 7px 12px; color: var(--text);
+    font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; outline: none;
+  }
+
+  .scan-input-row .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 7px; }
+
+  @media(max-width:768px) {
+    main { padding: 1.25rem 1rem; }
+    header { padding: 0 1rem; }
+    .tabs { padding: 0 0.5rem; }
+    .tab { padding: 10px 12px; font-size: 0.78rem; gap: 4px; }
+    .scanner-layout { grid-template-columns: 1fr; }
+    .progress-card { position: static; }
+    .form-grid { grid-template-columns: 1fr; }
+    .totals-bar { grid-template-columns: 1fr; }
+    .rel-cards { grid-template-columns: 1fr; }
+    .card-grid { grid-template-columns: 1fr; }
+    .church-filter-btn { min-width: 160px; }
+    .import-layout { grid-template-columns: 1fr; }
+    .imp-stats { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ── LOGIN SCREEN ── */
+  #login-screen {
+    display: none; position: fixed; inset: 0;
+    background: linear-gradient(135deg, #1a2035 0%, #2d3a6e 50%, #3b5bdb 100%);
+    z-index: 9998; align-items: center; justify-content: center;
+  }
+  #login-screen.show { display: flex; }
+  .login-box {
+    background: var(--surface); border-radius: 22px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.35); padding: 2.5rem 2.25rem;
+    width: 100%; max-width: 400px; animation: slideUp 0.3s ease;
+  }
+  .login-logo { text-align: center; margin-bottom: 2rem; }
+  .login-logo .login-icon {
+    width: 60px; height: 60px; margin: 0 auto 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 16px; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: white; box-shadow: 0 4px 16px rgba(59,91,219,0.45);
+  }
+  .login-logo h2 { font-family: 'Lora', serif; font-size: 1.4rem; color: var(--text); }
+  .login-logo h2 span { color: var(--accent); }
+  .login-logo p { color: var(--text-muted); font-size: 0.82rem; margin-top: 4px; }
+  .login-field { margin-bottom: 1rem; }
+  .login-field label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 7px; }
+  .login-field input {
+    width: 100%; padding: 10px 14px; border: 1.5px solid var(--border);
+    border-radius: 10px; font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.9rem; color: var(--text); outline: none; background: var(--bg);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .login-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.12); }
+  .login-error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(224,49,49,0.3); border-radius: 9px; padding: 10px 14px; font-size: 0.82rem; font-weight: 600; margin-bottom: 1rem; display: none; }
+  .login-error.show { display: block; }
+  .btn-login { width: 100%; padding: 11px; background: var(--accent); color: white; border: none; border-radius: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.9rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(59,91,219,0.35); transition: all 0.15s; letter-spacing: 0.01em; }
+  .btn-login:hover { background: var(--accent2); transform: translateY(-1px); }
+
+  /* ── USER INFO in header ── */
+  .user-info { display: flex; align-items: center; gap: 10px; }
+  .user-badge { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; }
+  .user-avatar { width: 28px; height: 28px; background: linear-gradient(135deg,var(--accent),var(--accent2)); border-radius: 8px; display:flex;align-items:center;justify-content:center;font-size:12px;color:white;font-weight:700; }
+  .user-name { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+  .user-role { font-size: 0.68rem; color: var(--text-muted); }
+  .btn-logout { background: none; border: 1.5px solid var(--border); border-radius: 8px; padding: 6px 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+  .btn-logout:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+
+  /* ── CONFIGURAÇÕES TAB ── */
+  .cfg-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow-sm); }
+  .cfg-section h3 { font-family: 'Lora', serif; font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+  .cfg-section > p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem; }
+  .users-grid { display: flex; flex-direction: column; gap: 10px; }
+  .user-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; transition: border-color 0.15s; }
+  .user-card:hover { border-color: var(--border2); }
+  .user-card-avatar { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: white; flex-shrink: 0; }
+  .user-card-info { flex: 1; }
+  .user-card-name { font-weight: 700; font-size: 0.88rem; color: var(--text); }
+  .user-card-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .user-card-church { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-light); color: var(--accent); border-radius: 6px; padding: 2px 9px; font-size: 0.72rem; font-weight: 600; margin-top: 4px; }
+  .user-card-master { display: inline-flex; align-items: center; gap: 5px; background: var(--green-bg); color: var(--green); border-radius: 6px; padding: 2px 9px; font-size: 0.72rem; font-weight: 600; margin-top: 4px; }
+  .cfg-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .cfg-form-row.single { grid-template-columns: 1fr; }
+  .cfg-field label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
+  .cfg-field input, .cfg-field select { width: 100%; padding: 9px 13px; border: 1.5px solid var(--border); border-radius: 9px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; color: var(--text); outline: none; background: var(--bg); transition: border-color 0.15s; }
+  .cfg-field input:focus, .cfg-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.1); }
+  .cfg-add-bar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.25rem; padding: 1.25rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; }
+  .cfg-add-bar .cfg-field { flex: 1; min-width: 140px; }
+</style>
+</head>
+<body>
+
+<!-- ══ TELA DE LOGIN ══ -->
+<div id="login-screen" class="show">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+      </div>
+      <h2>Patrimônio<span>Igreja</span></h2>
+      <p>Sistema de Inventário de Bens</p>
+    </div>
+    <div class="login-error" id="login-error">Usuário ou senha incorretos.</div>
+    <div class="login-field">
+      <label>Usuário</label>
+      <input type="text" id="login-user" placeholder="Digite seu usuário" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-field">
+      <label>Senha</label>
+      <input type="password" id="login-pass" placeholder="Digite sua senha" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn-login" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+    </div>
+    <h1>Patrimônio<span>Igreja</span></h1>
+  </div>
+  <button id="pwa-install-btn" onclick="installPWA()" style="display:none;align-items:center;gap:6px;padding:7px 14px;background:var(--accent-light);border:1.5px solid #c5d0f8;border-radius:10px;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.8rem;font-weight:600;color:var(--accent);cursor:pointer">
+    ⬇️ Instalar App
+  </button>
+  <!-- church selector removed -->
+  <div class="user-info" id="user-info-bar" style="display:none">
+    <div class="user-badge">
+      <div class="user-avatar" id="header-avatar">?</div>
+      <div>
+        <div class="user-name" id="header-username">—</div>
+        <div class="user-role" id="header-userrole">—</div>
+      </div>
+    </div>
+    <button class="btn-logout" onclick="doLogout()">Sair</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('scanner',this)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Inventário
+  </button>
+  <button class="tab" onclick="showTab('bens',this)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+    Bens <span class="cnt" id="cnt-bens">0</span>
+  </button>
+  <button class="tab" onclick="showTab('cadastros',this)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+    Cadastros
+  </button>
+  <button class="tab" onclick="showTab('importacao',this)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Importação
+  </button>
+  <button class="tab" onclick="showTab('relatorio',this)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Relatório
+  </button>
+  <button class="tab" id="tab-btn-config" onclick="showTab('config',this)" style="display:none">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    Configurações
+  </button>
+</div>
+
+<main>
+
+<!-- ══ INVENTÁRIO ══ -->
+<div id="tab-scanner" class="page active" style="padding-top:0.5rem">
+  <div class="scanner-layout">
+    <div class="scan-card" id="scan-card">
+      <div class="scan-input-area">
+        <div class="scan-label">Leia a etiqueta ou digite o código</div>
+        <div class="scan-input-row">
+          <div class="scan-cursor"></div>
+          <input type="text" id="bc-input" placeholder="Aguardando leitura do código de barras..." autofocus onkeydown="bcKey(event)" oninput="bcLive(this.value)">
+          <button class="btn btn-sm btn-primary" onclick="doScan()">Buscar</button>
+          <button class="btn-camera" id="btn-cam" onclick="openCamera()" title="Escanear com a câmera do celular">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Câmera
+          </button>
+        </div>
+        <div class="live-sug" id="live-sug"></div>
+      </div>
+      <div class="result-area" id="result-area">
+        <div class="state-empty" id="s-empty">
+          <div class="icon">📦</div>
+          <p style="font-weight:600;color:var(--text)">Aguardando leitura</p>
+          <p style="margin-top:6px;font-size:0.78rem">Conecte o leitor USB, escaneie a etiqueta ou use o botão <strong>Câmera</strong></p>
+        </div>
+        <div class="state-notfound" id="s-notfound" style="display:none">
+          <div class="icon">🔍</div>
+          <p style="color:var(--red);font-weight:700">Código não encontrado</p>
+          <p style="margin-top:6px;font-size:0.82rem">Este bem não está cadastrado ainda.</p>
+          <button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="cadastroRapido()">+ Cadastrar este bem</button>
+        </div>
+        <div id="s-found" style="display:none">
+          <div class="result-name" id="r-nome">—</div>
+          <div class="result-code" id="r-code">—</div>
+          <div id="r-igreja" style="font-size:0.78rem;font-weight:600;color:var(--accent);background:var(--accent-light);padding:4px 10px;border-radius:6px;margin-bottom:10px;display:none"></div>
+          <div class="checks">
+            <div class="chk ok" id="chk1">
+              <div class="chk-icon">✅</div>
+              <div class="chk-text"><strong>Bem localizado no sistema</strong><span id="chk1-sub">Encontrado no cadastro</span></div>
+            </div>
+            <div class="chk ok" id="chk2">
+              <div class="chk-icon">🏷️</div>
+              <div class="chk-text"><strong>Etiqueta lida com sucesso</strong><span id="chk2-sub">Código escaneado</span></div>
+            </div>
+            <div class="chk" id="chk3">
+              <div class="chk-icon" id="chk3-icon">📍</div>
+              <div class="chk-text"><strong>Local / Dependência</strong><span id="chk3-sub">Selecione abaixo</span></div>
+            </div>
+          </div>
+          <div class="dep-section">
+            <div class="section-label">Confirmar local onde o bem está</div>
+            <div class="dep-chips" id="dep-chips"></div>
+            <div style="margin-top:4px">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.75rem;color:var(--text-muted)" onclick="document.getElementById('dep-custom-wrap').style.display='flex'">+ Outro local</button>
+            </div>
+            <div id="dep-custom-wrap" class="dep-custom" style="display:none">
+              <input type="text" id="dep-new" placeholder="Outro local (ex: COZINHA, SALA DE ORAÇÃO...)">
+              <button class="btn btn-sm btn-outline" onclick="addDep()">+ Adicionar</button>
+            </div>
+          </div>
+          <div class="obs-section" style="margin-bottom:0">
+            <div class="section-label" style="margin-bottom:6px">Observação</div>
+            <textarea id="obs" placeholder="Ex: item com avaria, sem etiqueta original..."></textarea>
+          </div>
+          <div class="action-btns">
+            <button class="btn btn-confirm" onclick="confirmar()">✔ Confirmar</button>
+            <button class="btn btn-problem" onclick="problema()">Problema</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="progress-card">
+      <div class="prog-title">Progresso do Inventário</div>
+      <div style="margin-bottom:1rem">
+        <div class="dep-ctx-label" style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:6px">Igreja</div>
+        <select id="inv-church-sel" onchange="selectInvChurch(this.value)" style="width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;outline:none;">
+          <option value="">Todas as igrejas</option>
+        </select>
+      </div>
+      <div class="prog-bar-wrap">
+        <div class="prog-bar-top"><span>Verificados</span><span id="prog-pct">0%</span></div>
+        <div class="prog-bar"><div class="prog-bar-fill" id="prog-fill" style="width:0%"></div></div>
+      </div>
+      <div class="prog-stat"><div class="lbl"><span class="prog-dot" style="background:var(--green)"></span> Confirmados</div><div style="font-weight:700;color:var(--green)" id="p-ok">0</div></div>
+      <div class="prog-stat"><div class="lbl"><span class="prog-dot" style="background:var(--yellow)"></span> Com problema</div><div style="font-weight:700;color:var(--yellow)" id="p-prob">0</div></div>
+      <div class="prog-stat"><div class="lbl"><span class="prog-dot" style="background:#cbd5e1"></span> Não verificados</div><div style="font-weight:700" id="p-pend">0</div></div>
+      <div class="prog-stat"><div class="lbl">Total de bens</div><div style="font-weight:700" id="p-total">0</div></div>
+      <div class="dep-ctx">
+        <div class="dep-ctx-label">Você está em qual dependência?</div>
+        <select id="dep-ctx-sel" onchange="onCtxChange()"><option value="">— Todas —</option></select>
+        <div class="dep-ctx-hint">Essa dependência aparece em destaque nos chips</div>
+      </div>
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center" onclick="resetInv()">Reiniciar inventário</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ BENS ══ -->
+<div id="tab-bens" class="page">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h2>Bens Cadastrados</h2>
+      <p id="bens-sub">—</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger btn-sm" onclick="openClearBensModal()" title="Limpar lançamentos">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6"/><path d="M14,11v6"/><path d="M9,6V4a1,1,0,0,1,1-1h4a1,1,0,0,1,1,1v2"/></svg>
+        Limpar Bens
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="openModal('modal-import')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Importar XLS
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="openModal('modal-bem');editId=null;fillBemForm()">
+        + Novo Bem
+      </button>
+    </div>
+  </div>
+
+  <div class="totals-bar" id="totals-bar">
+    <div class="total-card"><div class="tc-label">Vl. Aquisição Total</div><div class="tc-val blue" id="tot-aq">R$ 0,00</div></div>
+    <div class="total-card"><div class="tc-label">Vl. Depreciação Total</div><div class="tc-val" id="tot-dep">R$ 0,00</div></div>
+    <div class="total-card"><div class="tc-label">Vl. Atual Total</div><div class="tc-val green" id="tot-at">R$ 0,00</div></div>
+    <div class="total-card" id="tot-count-card" style="display:none"><div class="tc-label" id="tot-count-label">Qtd. Filtrada</div><div class="tc-val blue" id="tot-count">0</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="search-box">
+      <span class="search-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <input type="text" id="s-q" placeholder="Nome, código, barcode..." oninput="renderBens()">
+    </div>
+    <select class="filter-select" id="s-st" onchange="renderBens()">
+      <option value="">Todos os status</option>
+      <option>Ativo</option><option>Depreciado</option><option>Baixado</option>
+    </select>
+    <select class="filter-select" id="s-inv" onchange="renderBens()">
+      <option value="">Todo inventário</option>
+      <option value="confirmado">Confirmados</option>
+      <option value="problema">Com problema</option>
+      <option value="pendente">Não verificados</option>
+      <option value="sem-dep">Sem dependência</option>
+    </select>
+    <select class="filter-select" id="s-dep" onchange="renderBens()">
+      <option value="">Todas as dependências</option>
+    </select>
+    <select class="filter-select" id="s-ig" onchange="renderBens()">
+      <option value="">Todas as igrejas</option>
+    </select>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Inv.</th>
+          <th>Código</th>
+          <th>Nome</th>
+          <th>Igreja</th>
+          <th>Dependência</th>
+          <th>Vl. Aquisição</th>
+          <th>Vl. Deprec.</th>
+          <th>Vl. Atual</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="bens-tbody"></tbody>
+    </table>
+    <div class="pagination">
+      <span id="pag-info">—</span>
+      <div class="pag-btns" id="pag-btns"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CADASTROS ══ -->
+<div id="tab-cadastros" class="page">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h2>Cadastros</h2>
+      <p>Gerencie igrejas e dependências</p>
+    </div>
+  </div>
+
+  <div class="sub-tabs">
+    <button class="sub-tab active" onclick="showSubTab('igrejas',this)">Igrejas</button>
+    <button class="sub-tab" onclick="showSubTab('deps',this)">Dependências</button>
+  </div>
+
+  <!-- IGREJAS -->
+  <div id="sub-igrejas">
+    <div class="section-header">
+      <div><h3>Igrejas Cadastradas</h3><p id="ig-count">—</p></div>
+      <button class="btn btn-primary btn-sm" onclick="openModal('modal-ig');editIgId=null;fillIgForm()">+ Nova Igreja</button>
+    </div>
+    <div class="card-grid" id="ig-grid"></div>
+  </div>
+
+  <!-- DEPENDÊNCIAS -->
+  <div id="sub-deps" style="display:none">
+    <div class="section-header">
+      <div><h3>Dependências</h3><p id="dep-count">Dependências da igreja ativa</p></div>
+      <button class="btn btn-primary btn-sm" onclick="openModal('modal-dep')">+ Nova Dependência</button>
+    </div>
+    <div class="card-grid" id="dep-grid"></div>
+  </div>
+</div>
+
+<!-- ══ IMPORTAÇÃO ══ -->
+<div id="tab-importacao" class="page" style="padding-top:0.5rem">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h2>Importar Bens via XLS</h2>
+      <p>Envie o Relatório de Bens Imobilizado exportado do sistema</p>
+    </div>
+  </div>
+
+  <div class="import-layout">
+
+    <!-- PAINEL ESQUERDO: upload + mapeamento + ação -->
+    <div style="display:flex;flex-direction:column;gap:1.25rem">
+
+      <!-- DROP ZONE -->
+      <div class="import-panel">
+        <h3>1. Selecione o arquivo</h3>
+        <div class="drop-zone" id="imp-drop" ondragover="impDragOver(event)" ondragleave="impDragLeave(event)" ondrop="impDrop(event)" onclick="document.getElementById('imp-file-inp').click()">
+          <div id="imp-dz-icon" class="dz-icon">📂</div>
+          <div class="dz-title" id="imp-dz-title">Arraste o arquivo aqui</div>
+          <div class="dz-sub" id="imp-dz-sub">ou clique para selecionar</div>
+          <div class="dz-formats">
+            <span class="dz-tag">.XLS</span>
+            <span class="dz-tag">.XLSX</span>
+          </div>
+          <input type="file" id="imp-file-inp" accept=".xls,.xlsx" style="display:none" onchange="impPickFile(this)">
+        </div>
+      </div>
+
+      <!-- DESTINO -->
+      <div class="import-panel">
+        <h3>2. Selecione a igreja destino</h3>
+        <div class="field">
+          <label>Igreja *</label>
+          <select id="imp-church-sel" onchange="impCheckReady()">
+            <option value="">Selecione a igreja...</option>
+          </select>
+        </div>
+        <div style="margin-top:1rem">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer">
+            <input type="checkbox" id="imp-skip-dup" checked style="width:15px;height:15px;accent-color:var(--accent)">
+            Ignorar bens já cadastrados (mesmo código)
+          </label>
+        </div>
+        <div style="margin-top:8px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer">
+            <input type="checkbox" id="imp-auto-dep" checked style="width:15px;height:15px;accent-color:var(--accent)">
+            Criar dependências automaticamente
+          </label>
+        </div>
+      </div>
+
+      <!-- MAPEAMENTO DE COLUNAS -->
+      <div class="import-panel" id="imp-colmap-panel" style="display:none">
+        <h3>3. Mapeamento detectado</h3>
+        <table class="col-map-table" id="imp-colmap-table"></table>
+      </div>
+
+      <!-- BOTÃO IMPORTAR -->
+      <button class="btn btn-primary" id="imp-exec-btn" onclick="doImportFull()" disabled style="width:100%;justify-content:center;padding:12px;font-size:0.9rem">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Executar Importação
+      </button>
+    </div>
+
+    <!-- PAINEL DIREITO: preview + log -->
+    <div style="display:flex;flex-direction:column;gap:1.25rem">
+
+      <!-- ESTADO VAZIO -->
+      <div id="imp-empty-state" class="import-panel" style="text-align:center;padding:3rem 2rem">
+        <div style="font-size:3rem;margin-bottom:1rem;opacity:0.35">📊</div>
+        <h3 style="font-family:'Lora',serif;font-weight:600;margin-bottom:6px">Nenhum arquivo carregado</h3>
+        <p style="color:var(--text-muted);font-size:0.82rem">Selecione o arquivo XLS para ver a pré-visualização dos dados antes de importar.</p>
+        <div style="margin-top:1.5rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1rem;text-align:left">
+          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:8px">Colunas esperadas no arquivo</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px">
+            ${['Código','Nome','Fornecedor','Localidade','Conta','Nº Documento','Dependência','Dt. Aquisição','Vl. Aquisição','Vl. Deprec.','Vl. Atual','Status'].map(c=>`<span style="background:var(--accent-light);color:var(--accent);border-radius:5px;padding:2px 9px;font-size:0.72rem;font-weight:600">${c}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- STATS + PREVIEW (hidden until file loaded) -->
+      <div id="imp-content" style="display:none;flex-direction:column;gap:1.25rem">
+        <!-- Stats -->
+        <div class="imp-stats">
+          <div class="imp-stat"><div class="is-val" id="imp-s-total" style="color:var(--accent)">0</div><div class="is-label">Total no arquivo</div></div>
+          <div class="imp-stat"><div class="is-val" id="imp-s-new" style="color:var(--green)">0</div><div class="is-label">Novos para importar</div></div>
+          <div class="imp-stat"><div class="is-val" id="imp-s-dup" style="color:var(--yellow)">0</div><div class="is-label">Já cadastrados</div></div>
+          <div class="imp-stat"><div class="is-val" id="imp-s-err" style="color:var(--red)">0</div><div class="is-label">Com erro</div></div>
+        </div>
+
+        <!-- Preview table -->
+        <div class="imp-preview-wrap">
+          <div class="imp-preview-header">
+            <h3>Pré-visualização</h3>
+            <span style="font-size:0.75rem;color:var(--text-muted)" id="imp-preview-count">—</span>
+          </div>
+          <div class="imp-preview-scroll">
+            <table class="imp-preview-table">
+              <thead>
+                <tr>
+                  <th>Situação</th>
+                  <th>Código</th>
+                  <th>Nome</th>
+                  <th>Dependência</th>
+                  <th>Dt. Aquisição</th>
+                  <th>Vl. Aquisição</th>
+                  <th>Vl. Deprec.</th>
+                  <th>Vl. Atual</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="imp-preview-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Log -->
+        <div class="imp-log" id="imp-log-wrap" style="display:none">
+          <div class="imp-log-header">
+            <h3>Log da Importação</h3>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('imp-log-wrap').style.display='none'">✕</button>
+          </div>
+          <div class="imp-log-body" id="imp-log-body"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ RELATÓRIO ══ -->
+<div id="tab-relatorio" class="page">
+  <div class="page-header">
+    <div class="page-header-left"><h2>Relatório do Inventário</h2><p>Resumo completo da verificação</p></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="rel-church-sel" onchange="selectRelChurch(this.value)" style="background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:7px 14px;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;outline:none;cursor:pointer;min-width:200px;">
+        <option value="">Todas as igrejas</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="exportCSV()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportar CSV
+      </button>
+    </div>
+  </div>
+  <div class="rel-cards" id="rel-cards"></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Situação</th><th>Código</th><th>Nome</th><th>Dep. Cadastrada</th><th>Dep. Confirmada</th><th>Vl. Atual</th><th>Observação</th></tr>
+      </thead>
+      <tbody id="rel-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ CONFIGURAÇÕES ══ -->
+<div id="tab-config" class="page">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h2>Configurações</h2>
+      <p>Gerencie usuários e permissões de acesso</p>
+    </div>
+  </div>
+
+  <!-- Formulário de novo usuário -->
+  <div class="cfg-section">
+    <h3>➕ Novo Usuário</h3>
+    <p>Cadastre um usuário e vincule-o a uma Casa de Oração. Usuário Master tem acesso total.</p>
+    <div class="cfg-add-bar">
+      <div class="cfg-field">
+        <label>Usuário *</label>
+        <input type="text" id="cfg-new-user" placeholder="Ex: jose.silva">
+      </div>
+      <div class="cfg-field">
+        <label>Senha *</label>
+        <input type="password" id="cfg-new-pass" placeholder="Mínimo 4 caracteres">
+      </div>
+      <div class="cfg-field">
+        <label>Nome completo</label>
+        <input type="text" id="cfg-new-nome" placeholder="Ex: José da Silva">
+      </div>
+      <div class="cfg-field">
+        <label>Casa de Oração</label>
+        <select id="cfg-new-church">
+          <option value="">— Master (acesso total) —</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn btn-primary" onclick="saveNewUser()">+ Adicionar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lista de usuários -->
+  <div class="cfg-section">
+    <h3>👥 Usuários Cadastrados</h3>
+    <p>Clique em um usuário para editar ou remover.</p>
+    <div class="users-grid" id="users-grid">
+      <p style="color:var(--text-muted);font-size:0.85rem">Nenhum usuário cadastrado ainda.</p>
+    </div>
+  </div>
+
+  <!-- Backup -->
+  <div class="cfg-section">
+    <h3>💾 Backup dos Dados</h3>
+    <p>Exporte todos os dados (igrejas, dependências, bens e usuários) para um arquivo JSON, ou importe um backup anterior para restaurar tudo.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:0.75rem">
+      <button class="btn btn-primary" onclick="exportBackupJSON()">⬇️ Exportar Backup (JSON)</button>
+      <button class="btn btn-outline" onclick="document.getElementById('backup-inp').click()">⬆️ Importar Backup (JSON)</button>
+      <input type="file" id="backup-inp" accept=".json,application/json" style="display:none" onchange="importBackupJSON(this)">
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- MODAL BEM -->
+<div class="modal-overlay" id="modal-bem">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="bem-title">Novo Bem</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-bem')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field form-full"><label>Nome do Bem *</label><input type="text" id="b-nome" placeholder="Ex: Ventilador de Teto"></div>
+        <div class="field"><label>Código do Bem *</label><input type="text" id="b-cod" placeholder="Ex: 21-0974 / 000025"></div>
+        <div class="field"><label>Código de Barras</label><input type="text" id="b-bc" placeholder="Gerado automaticamente"></div>
+        <div class="field form-full"><label>Dependência</label><input type="text" id="b-dep" placeholder="Ex: SALÃO DE CULTO, COZINHA..."></div>
+        <div class="field form-full"><label>Igreja *</label><select id="b-ig"></select></div>
+        <div class="field"><label>Fornecedor</label><input type="text" id="b-forn"></div>
+        <div class="field"><label>Nº Documento / NF</label><input type="text" id="b-doc"></div>
+        <div class="field"><label>Data de Aquisição</label><input type="date" id="b-dt"></div>
+        <div class="field"><label>Vl. Aquisição (R$)</label><input type="number" id="b-val" step="0.01" placeholder="0,00"></div>
+        <div class="field"><label>Vl. Depreciação (R$)</label><input type="number" id="b-dep-val" step="0.01" placeholder="0,00"></div>
+        <div class="field"><label>Vl. Atual (R$)</label><input type="number" id="b-val-at" step="0.01" placeholder="0,00"></div>
+        <div class="field"><label>Conta</label><input type="text" id="b-conta" placeholder="Ex: 1101"></div>
+        <div class="field"><label>Status do Bem</label>
+          <select id="b-st"><option>Ativo</option><option>Depreciado</option><option>Baixado</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-bem')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveBem()">Salvar Bem</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IGREJA -->
+<div class="modal-overlay" id="modal-ig">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><h3 id="ig-title">Nova Igreja</h3><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-ig')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Código *</label><input type="text" id="ig-cod" placeholder="Ex: BR 21-0974"></div>
+        <div class="field"><label>Nome / Bairro *</label><input type="text" id="ig-nome" placeholder="Ex: JARDIM DOS EUCALIPTOS"></div>
+        <div class="field form-full"><label>Endereço</label><input type="text" id="ig-end"></div>
+        <div class="field"><label>Cidade</label><input type="text" id="ig-cid"></div>
+        <div class="field"><label>Estado</label><input type="text" id="ig-est" maxlength="2" placeholder="SP"></div>
+        <div class="field form-full"><label>CNPJ</label><input type="text" id="ig-cnpj"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-ig')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveIg()">Salvar Igreja</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DEPENDÊNCIA -->
+<div class="modal-overlay" id="modal-dep">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><h3>Nova Dependência</h3><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-dep')">✕</button></div>
+    <div class="modal-body">
+      <div class="field" style="margin-bottom:1rem">
+        <label>Nome da Dependência *</label>
+        <input type="text" id="dep-nome" placeholder="Ex: SALÃO DE CULTO, COZINHA, PORÃO...">
+      </div>
+      <div class="field">
+        <label>Descrição</label>
+        <textarea id="dep-desc" rows="3" placeholder="Descrição opcional..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-dep')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveDep()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORT -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><h3>Importar XLS</h3><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-import')">✕</button></div>
+    <div class="modal-body">
+      <div class="field" style="margin-bottom:1.25rem">
+        <label>Igreja de destino *</label>
+        <select id="imp-ig"><option value="">Selecione...</option></select>
+      </div>
+      <div style="background:var(--bg);border:2px dashed var(--border2);border-radius:12px;padding:2rem;text-align:center;cursor:pointer;transition:border-color 0.15s"
+           ondragover="event.preventDefault()" ondrop="dropXLS(event)" onclick="document.getElementById('xls-inp').click()"
+           onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border2)'">
+        <div style="font-size:2.2rem;margin-bottom:10px">📄</div>
+        <p style="font-size:0.85rem;color:var(--text);font-weight:600">Arraste o arquivo XLS aqui</p>
+        <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px">ou clique para selecionar</p>
+        <input type="file" id="xls-inp" accept=".xls,.xlsx" style="display:none" onchange="pickXLS(this)">
+      </div>
+      <div id="imp-msg" style="display:none;margin-top:1rem;padding:10px 14px;border-radius:8px;font-size:0.82rem"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-import')">Fechar</button>
+      <button class="btn btn-primary" id="btn-imp" onclick="doImport()" disabled>Importar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL LIMPAR BENS -->
+<div class="modal-overlay" id="modal-clear-bens">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3 style="color:var(--red)">🗑️ Limpar Bens</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-clear-bens')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="clear-bens-body"></div>
+    </div>
+    <div class="modal-footer" id="clear-bens-footer"></div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR USUÁRIO -->
+<div class="modal-overlay" id="modal-edit-user">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3 id="edit-user-title">Editar Usuário</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-edit-user')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-user-idx">
+      <div class="cfg-form-row">
+        <div class="cfg-field">
+          <label>Usuário *</label>
+          <input type="text" id="edit-user-login" placeholder="login">
+        </div>
+        <div class="cfg-field">
+          <label>Nova Senha (deixe em branco p/ manter)</label>
+          <input type="password" id="edit-user-pass" placeholder="Nova senha">
+        </div>
+      </div>
+      <div class="cfg-form-row">
+        <div class="cfg-field">
+          <label>Nome completo</label>
+          <input type="text" id="edit-user-nome" placeholder="Nome">
+        </div>
+        <div class="cfg-field">
+          <label>Casa de Oração</label>
+          <select id="edit-user-church">
+            <option value="">— Master (acesso total) —</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn btn-danger btn-sm" onclick="deleteUser()">🗑️ Excluir</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('modal-edit-user')">Cancelar</button>
+        <button class="btn btn-primary" onclick="updateUser()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CÂMERA MODAL ══ -->
+<div class="cam-overlay" id="cam-overlay">
+  <div class="cam-modal">
+    <div class="cam-header">
+      <h3>📷 Escanear com a Câmera</h3>
+      <button class="cam-close" onclick="closeCamera()">✕</button>
+    </div>
+    <div class="cam-body">
+      <video id="cam-video" autoplay muted playsinline></video>
+      <div class="cam-viewfinder">
+        <div class="cam-frame">
+          <div class="cam-scan-line"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cam-sel-wrap" id="cam-sel-wrap">
+      <div class="cam-sel-label">Câmera</div>
+      <select id="cam-sel" onchange="switchCamera(this.value)"></select>
+    </div>
+    <div class="cam-status" id="cam-status">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Aponte a câmera para o código de barras
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="t-msg"></span></div>
+<div class="fb-saving" id="fb-saving">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin 0.8s linear infinite"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0"/></svg>
+  Salvando...
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://fyggsslndwsguavhduly.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Z2dzc2xuZHdzZ3VhdmhkdWx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzYyNDksImV4cCI6MjA5MTc1MjI0OX0.xxoROa9LNFBgSitG_sEP4IknAzIU7vxZuinRC_P0Lh4';
+
+// Tabela principal com prefixo pedido pelo usuário (dados de igrejas/dependências/bens)
+const TB_MAIN  = 'CaieirasPatrimonio_main';
+
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window._sb = _sb;
+
+// Listener em tempo real (Supabase Realtime) na tabela principal
+function listenDB() {
+  _sb.channel('caieiras-patrimonio-main-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TB_MAIN }, (payload) => {
+      // Se há uma gravação pendente, ignora o evento para evitar sobrescrever dados locais
+      if(window._savePending) return;
+      const data = payload.new;
+      if(data) {
+        const prev = JSON.stringify({igrejas: window.db?.igrejas, dependencias: window.db?.dependencias, bens: window.db?.bens, nextId: window.db?.nextId});
+        const next = JSON.stringify({igrejas: data.igrejas, dependencias: data.dependencias, bens: data.bens, nextId: data.next_id});
+        if(prev !== next) {
+          Object.assign(window.db, {
+            igrejas: data.igrejas || [],
+            dependencias: data.dependencias || [],
+            bens: data.bens || [],
+            nextId: data.next_id || 1
+          });
+          if(window._dbReady) {
+            window.refreshAll && window.refreshAll();
+            window.renderBens && window.renderBens();
+            window.renderIgGrid && window.renderIgGrid();
+            window.renderDepGrid && window.renderDepGrid();
+            window.renderRel && window.renderRel();
+            window.buildChurchList && window.buildChurchList();
+          }
+        }
+      }
+    })
+    .subscribe();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(listenDB, 100);
+});
+</script>
+
+<script>
+// ═══════════════════════════════════════════════
+// LOADING OVERLAY
+// ═══════════════════════════════════════════════
+(function() {
+  const overlay = document.createElement('div');
+  overlay.id = 'fb-loading';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg,#f4f6fb);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:Plus Jakarta Sans,sans-serif';
+  overlay.innerHTML = `
+    <div style="width:44px;height:44px;border:3px solid #e2e7f0;border-top-color:#3b5bdb;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+    <p style="color:#7a8aab;font-size:0.85rem;font-weight:500">Conectando ao banco de dados...</p>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+  document.body.appendChild(overlay);
+})();
+
+// ═══════════════════════════════════════════════
+// DATA — Supabase (Postgres + Realtime)
+// ═══════════════════════════════════════════════
+let db = { igrejas:[], dependencias:[], bens:[], nextId:1 };
+let _saveTimeout = null;
+window.db = db;
+window._dbReady = false;
+
+async function loadDB() {
+  try {
+    const { data, error } = await window._sb.from(TB_MAIN).select('*').eq('id','main').maybeSingle();
+    if(error) throw error;
+    if(data) {
+      Object.assign(db, {
+        igrejas: data.igrejas || [],
+        dependencias: data.dependencias || [],
+        bens: data.bens || [],
+        nextId: data.next_id || 1
+      });
+      window.db = db;
+    } else {
+      // Cria o registro inicial se ainda não existir
+      await window._sb.from(TB_MAIN).upsert({ id:'main', igrejas:[], dependencias:[], bens:[], next_id:1 });
+    }
+  } catch(e) { console.warn('Erro ao carregar do Supabase:', e); }
+}
+
+let _savingTimer = null;
+function _showSaving(v) {
+  const el = document.getElementById('fb-saving');
+  if(el) { if(v) el.classList.add('show'); else el.classList.remove('show'); }
+}
+function saveDB() {
+  // Debounce: agrupa escritas rápidas em uma só
+  clearTimeout(_saveTimeout);
+  _showSaving(true);
+  window._savePending = true; // bloqueia o listener enquanto gravação está pendente
+  _saveTimeout = setTimeout(async () => {
+    try {
+      // Captura snapshot dos dados AGORA para evitar race condition
+      const payload = {
+        id: 'main',
+        igrejas: JSON.parse(JSON.stringify(db.igrejas)),
+        dependencias: JSON.parse(JSON.stringify(db.dependencias)),
+        bens: JSON.parse(JSON.stringify(db.bens)),
+        next_id: db.nextId,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await window._sb.from(TB_MAIN).upsert(payload);
+      if(error) throw error;
+      // Atualiza referência global
+      window.db = db;
+    } catch(e) {
+      console.warn('Erro ao salvar no Supabase:', e);
+      toast('Erro ao salvar. Verifique a conexão.', 'err');
+    } finally {
+      _showSaving(false);
+      // Libera o listener 1s após a gravação para deixar o Supabase processar
+      setTimeout(() => { window._savePending = false; }, 1000);
+    }
+  }, 400);
+}
+
+let editId = null;
+let editIgId = null;
+let scanned = null;
+let xlsRows = null;
+let curPage = 1;
+const PER_PAGE = 20;
+
+// ═══════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════
+function getChurch() { return db.igrejas.find(ig=>ig.codigo===selectedChurch)||null; }
+function getChurchBens(cod) {
+  const localidade=cod||selectedChurch;
+  if(!localidade)return db.bens;
+  return db.bens.filter(b=>b.localidade===localidade);
+}
+function getChurchDeps() {
+  const cod=invChurch||selectedChurch;
+  if(!cod)return [...new Set([...db.dependencias.map(d=>d.nome),...db.bens.filter(b=>b.dependencia).map(b=>b.dependencia)])].sort();
+  const fromDeps=db.dependencias.filter(d=>d.localidade===cod).map(d=>d.nome);
+  const fromBens=[...new Set(db.bens.filter(b=>b.localidade===cod&&b.dependencia).map(b=>b.dependencia))];
+  return [...new Set([...fromDeps,...fromBens])].sort();
+}
+function fmtBRL(v){ return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function genBC(cod){ return cod.replace(/[^0-9]/g,'').padStart(13,'0').slice(-13)||String(Math.floor(Math.random()*9000000000000)+1000000000000); }
+
+let selectedChurch = '';
+let invChurch = ''; // filtro de igreja exclusivo da aba Inventário
+let relChurch = ''; // filtro de igreja exclusivo da aba Relatório
+// Expõe funções para o listener em tempo real do Supabase
+window._exposeFns = function() {
+  window.refreshAll = refreshAll;
+  window.renderBens = renderBens;
+  window.renderIgGrid = renderIgGrid;
+  window.renderDepGrid = renderDepGrid;
+  window.renderRel = renderRel;
+  window.buildChurchList = buildChurchList;
+};
+
+// ═══════════════════════════════════════════════
+// CHURCH DROPDOWN
+// ═══════════════════════════════════════════════
+function selectInvChurch(cod) {
+  invChurch = cod;
+  refreshAll();
+}
+function selectRelChurch(cod) {
+  relChurch = cod;
+  renderRel();
+}
+function buildChurchList(filter='') {
+  const list = document.getElementById('church-list-items');
+  if(!list) return; // dropdown não presente no DOM
+  const churches = db.igrejas.filter(ig=>
+    !filter || ig.nome.toLowerCase().includes(filter.toLowerCase()) || ig.codigo.toLowerCase().includes(filter.toLowerCase())
+  );
+  if(!churches.length) {
+    list.innerHTML='<div class="church-empty">Nenhuma igreja encontrada</div>'; return;
+  }
+  list.innerHTML = churches.map(ig=>`
+    <div class="church-list-item ${ig.codigo===selectedChurch?'active':''}" onclick="selectChurch('${ig.codigo}')">
+      <div style="flex:1"><div style="font-weight:600">${ig.nome}</div><div style="font-size:0.72rem;color:var(--text-muted)">${ig.cidade||''}${ig.estado?', '+ig.estado:''}</div></div>
+      <span class="church-code">${ig.codigo}</span>
+    </div>`).join('');
+}
+function filterChurchList(v) { buildChurchList(v); }
+function toggleChurchDropdown() {
+  const dd=document.getElementById('church-dropdown');
+  if(!dd) return;
+  dd.classList.toggle('open');
+  if(dd.classList.contains('open')) {
+    buildChurchList();
+    const s=document.getElementById('church-search');
+    if(s){s.value='';s.focus();}
+  }
+}
+function selectChurch(cod) {
+  selectedChurch=cod;
+  const ig=db.igrejas.find(x=>x.codigo===cod);
+  const btn=document.getElementById('church-btn-text');
+  if(btn) btn.textContent=ig?ig.nome:'Selecione a Igreja...';
+  const dd=document.getElementById('church-dropdown');
+  if(dd) dd.classList.remove('open');
+  refreshAll(); renderBens(); renderIgGrid(); renderDepGrid(); renderRel();
+}
+document.addEventListener('click',e=>{
+  const c=document.getElementById('church-filter-container');
+  if(c&&!c.contains(e.target)){const dd=document.getElementById('church-dropdown');if(dd)dd.classList.remove('open');}
+});
+
+// ═══════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════
+function showTab(id,el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  el.classList.add('active');
+  if(id==='bens'){renderBens();}
+  if(id==='relatorio'){renderRel();}
+  if(id==='cadastros'){renderIgGrid();renderDepGrid();}
+  if(id==='importacao'){impRefreshChurchSel();}
+  if(id==='config'){
+    populateCfgChurches('cfg-new-church');
+    loadUsers().then(renderUsersGrid);
+  }
+}
+function showSubTab(id,el) {
+  document.getElementById('sub-igrejas').style.display=id==='igrejas'?'block':'none';
+  document.getElementById('sub-deps').style.display=id==='deps'?'block':'none';
+  document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ═══════════════════════════════════════════════
+// MODALS
+// ═══════════════════════════════════════════════
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  if(id==='modal-import'){
+    const sel=document.getElementById('imp-ig'); sel.innerHTML='<option value="">Selecione...</option>';
+    db.igrejas.forEach(ig=>{ const o=document.createElement('option'); o.value=ig.codigo; o.textContent=ig.nome; sel.appendChild(o); });
+  }
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); editId=null; editIgId=null; }
+document.querySelectorAll('.modal-overlay').forEach(m=>{
+  m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); });
+});
+
+// ═══════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════
+let toastTimer;
+function toast(msg,type='ok') {
+  const t=document.getElementById('toast');
+  t.className='toast show '+(type==='err'?'err-toast':'ok-toast');
+  document.getElementById('t-msg').textContent=msg;
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+// ═══════════════════════════════════════════════
+// REFRESH ALL
+// ═══════════════════════════════════════════════
+function refreshAll() {
+  const bens = (currentUser && !currentUser.master && currentUser.church)
+    ? db.bens.filter(b => b.localidade === currentUser.church)
+    : db.bens; // filtra bens pela igreja do usuário logado (ou todos se master)
+  document.getElementById('cnt-bens').textContent=bens.length;
+  // Popula o seletor de igreja do inventário
+  const invSel=document.getElementById('inv-church-sel');
+  if(invSel){
+    const curVal=invSel.value;
+    invSel.innerHTML='<option value="">Todas as igrejas</option>';
+    db.igrejas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===curVal)o.selected=true;invSel.appendChild(o);});
+    if(invChurch)invSel.value=invChurch;
+  }
+  // Bens filtrados pela igreja do inventário (se selecionada)
+  const bensFiltrados = invChurch ? bens.filter(b=>b.localidade===invChurch) : bens;
+  // Deps in inv — dependências da igreja selecionada no inventário (ou todas)
+  const allDepsInv=[...new Set([
+    ...(invChurch ? db.dependencias.filter(d=>d.localidade===invChurch) : db.dependencias).map(d=>d.nome),
+    ...bensFiltrados.filter(b=>b.dependencia).map(b=>b.dependencia)
+  ])].sort();
+  const allDeps=allDepsInv;
+  const sel=document.getElementById('dep-ctx-sel');
+  const cv=sel.value;
+  sel.innerHTML='<option value="">— Todas —</option>';
+  allDeps.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===cv)o.selected=true; sel.appendChild(o); });
+  // Filter dep (aba Bens) — mantém todas as dependências de todos os bens
+  const allDepsBens=[...new Set([
+    ...db.dependencias.map(d=>d.nome),
+    ...db.bens.filter(b=>b.dependencia).map(b=>b.dependencia)
+  ])].sort();
+  const sdep=document.getElementById('s-dep');
+  const sdepv=sdep.value;
+  sdep.innerHTML='<option value="">Todas as dependências</option>';
+  allDepsBens.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===sdepv)o.selected=true; sdep.appendChild(o); });
+  // Stats — filtrados pela igreja do inventário
+  const ok=bensFiltrados.filter(b=>b.invStatus==='confirmado').length;
+  const prob=bensFiltrados.filter(b=>b.invStatus==='problema').length;
+  const pend=bensFiltrados.filter(b=>!b.invStatus||b.invStatus==='pendente').length;
+  const total=bensFiltrados.length;
+  document.getElementById('p-ok').textContent=ok;
+  document.getElementById('p-prob').textContent=prob;
+  document.getElementById('p-pend').textContent=pend;
+  document.getElementById('p-total').textContent=total;
+  const pct=total?Math.round((ok+prob)/total*100):0;
+  document.getElementById('prog-pct').textContent=pct+'%';
+  document.getElementById('prog-fill').style.width=pct+'%';
+  const totalGlobal=bens.length;
+  const okGlobal=bens.filter(b=>b.invStatus==='confirmado').length;
+  const pendGlobal=bens.filter(b=>!b.invStatus||b.invStatus==='pendente').length;
+  document.getElementById('bens-sub').textContent=`${totalGlobal} bens no total · ${okGlobal} confirmados · ${pendGlobal} pendentes`;
+  // Totals são atualizados pelo renderBens com base nos filtros ativos
+}
+
+// ═══════════════════════════════════════════════
+// SCANNER
+// ═══════════════════════════════════════════════
+function show(id,v) { document.getElementById(id).style.display=v?'':'none'; }
+function bcKey(e) { if(e.key==='Enter')doScan(); }
+function bcLive(v) {
+  const sug=document.getElementById('live-sug');
+  if(!v||v.length<2){sug.style.display='none';return;}
+  const _churchFilter = invChurch || (currentUser && !currentUser.master ? currentUser.church : '');
+  const pool=_churchFilter?db.bens.filter(b=>b.localidade===_churchFilter):db.bens;
+  const hits=pool.filter(b=>b.codigo.includes(v)||b.barcode.includes(v)||(b.nome&&b.nome.toLowerCase().includes(v.toLowerCase()))).slice(0,5);
+  if(!hits.length){sug.style.display='none';return;}
+  sug.innerHTML=hits.map(b=>{
+    const igNome=db.igrejas.find(x=>x.codigo===b.localidade)?.nome||b.localidade||'';
+    return `<div class="sug-item" onclick="selectSug('${b.barcode}')">
+      <span>${b.nome}</span>
+      <span style="display:flex;gap:8px;align-items:center">
+        ${igNome?`<span style="font-size:0.68rem;background:var(--accent-light);color:var(--accent);padding:1px 7px;border-radius:5px;font-weight:600;white-space:nowrap">${igNome}</span>`:''}
+        <span style="font-family:monospace;font-size:0.72rem;color:var(--text-muted)">${b.codigo}</span>
+      </span>
+    </div>`;
+  }).join('');
+  sug.style.display='flex';
+}
+function selectSug(bc) { document.getElementById('bc-input').value=bc; document.getElementById('live-sug').style.display='none'; doScan(); }
+function doScan() {
+  const v=document.getElementById('bc-input').value.trim();
+  if(!v)return;
+  const _churchFilter = invChurch || (currentUser && !currentUser.master ? currentUser.church : '');
+  const pool=_churchFilter?db.bens.filter(b=>b.localidade===_churchFilter):db.bens;
+  const bem=pool.find(b=>b.barcode===v||b.codigo===v);
+  if(!bem){show('s-empty',false);show('s-notfound',true);show('s-found',false);return;}
+  scanned=bem;
+  const igNomeScanned=db.igrejas.find(x=>x.codigo===bem.localidade)?.nome||bem.localidade||'';
+  document.getElementById('r-nome').textContent=bem.nome;
+  document.getElementById('r-code').textContent=`${bem.codigo} · ${bem.barcode}`;
+  document.getElementById('r-igreja').textContent=igNomeScanned?`🏛️ ${igNomeScanned}`:'';
+  document.getElementById('r-igreja').style.display=igNomeScanned?'':'none';
+  // check3
+  const c3=document.getElementById('chk3'); c3.className='chk';
+  const c3i=document.getElementById('chk3-icon'); const c3s=document.getElementById('chk3-sub');
+  if(bem.invStatus==='confirmado'){c3.className='chk ok';c3i.textContent='✅';c3s.textContent='Confirmado em: '+bem.invDep;}
+  else if(bem.invStatus==='problema'){c3.className='chk warn';c3i.textContent='⚠️';c3s.textContent='Problema registrado';}
+  else{c3.className='chk';c3i.textContent='📍';c3s.textContent='Selecione abaixo';}
+  // deps — auto-detecta dependência do cadastro quando não há invDep
+  const deps=getChurchDeps();
+  const ctx=document.getElementById('dep-ctx-sel').value;
+  const chips=document.getElementById('dep-chips');
+  // Auto-pré-seleção: usa invDep se já definido, senão usa dependencia do cadastro
+  const autoSel = bem.invDep || bem.dependencia || '';
+  if(autoSel && !bem.invDep) { bem.invDep = autoSel; }
+  chips.innerHTML=deps.map(d=>`<div class="dep-chip${autoSel===d?' sel':''}${d===ctx?' current':''}" onclick="selDep(this,'${d}')">${d}</div>`).join('');
+  // Se a dependência não está na lista de chips, adiciona chip extra
+  if(autoSel && !deps.includes(autoSel)) {
+    chips.innerHTML += `<div class="dep-chip sel" onclick="selDep(this,'${autoSel.replace(/'/g,"\'")}')">${autoSel}</div>`;
+  }
+  // Mostra/oculta input manual: só exibe se não houver auto-detecção
+  const customWrap = document.getElementById('dep-custom-wrap');
+  if(customWrap) customWrap.style.display = autoSel ? 'none' : 'flex';
+  // Atualiza chk3 se já tem dep auto-detectada
+  if(autoSel && bem.invStatus!=='confirmado' && bem.invStatus!=='problema') {
+    const c3=document.getElementById('chk3');
+    c3.className='chk ok';
+    document.getElementById('chk3-icon').textContent='📍';
+    document.getElementById('chk3-sub').textContent='Auto-detectado: '+autoSel;
+  }
+  document.getElementById('obs').value=bem.invObs||'';
+  show('s-empty',false);show('s-notfound',false);show('s-found',true);
+  document.getElementById('scan-card').classList.add('scan-flash');
+  setTimeout(()=>document.getElementById('scan-card').classList.remove('scan-flash'),300);
+  document.getElementById('live-sug').style.display='none';
+}
+function selDep(el,d) {
+  document.querySelectorAll('#dep-chips .dep-chip').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');
+  if(scanned){scanned.invDep=d;const c3=document.getElementById('chk3');c3.className='chk ok';document.getElementById('chk3-icon').textContent='📍';document.getElementById('chk3-sub').textContent='Local: '+d;}
+}
+function addDep() {
+  const inp=document.getElementById('dep-new'); const v=inp.value.trim().toUpperCase();
+  if(!v)return;
+  const chips=document.getElementById('dep-chips');
+  const chip=document.createElement('div'); chip.className='dep-chip sel';
+  chip.textContent=v; chip.onclick=()=>selDep(chip,v);
+  chips.appendChild(chip);
+  if(scanned)scanned.invDep=v;
+  inp.value='';
+  // Também adiciona à lista de dependências da igreja
+  const ig=getChurch();
+  if(ig&&!db.dependencias.find(d=>d.nome===v&&d.localidade===ig.codigo)){
+    db.dependencias.push({id:'dep'+Date.now(),nome:v,desc:'',localidade:ig.codigo});
+  }
+  saveDB(); refreshAll();
+}
+function onCtxChange() {
+  if(!scanned)return; doScan();
+}
+function confirmar() {
+  if(!scanned)return;
+  const dep=document.getElementById('dep-chips').querySelector('.sel')?.textContent||scanned.invDep||'';
+  if(!dep){toast('Selecione o local do bem.','err');return;}
+  scanned.invStatus='confirmado'; scanned.invDep=dep; scanned.invObs=document.getElementById('obs').value;
+  saveDB(); refreshAll(); renderBens();
+  toast('Bem confirmado!');
+  document.getElementById('bc-input').value=''; document.getElementById('bc-input').focus();
+  show('s-empty',true);show('s-notfound',false);show('s-found',false); scanned=null;
+}
+function problema() {
+  if(!scanned)return;
+  scanned.invStatus='problema'; scanned.invObs=document.getElementById('obs').value;
+  saveDB(); refreshAll(); renderBens();
+  toast('Problema registrado.','err');
+  document.getElementById('bc-input').value=''; document.getElementById('bc-input').focus();
+  show('s-empty',true);show('s-notfound',false);show('s-found',false); scanned=null;
+}
+function resetInv() {
+  if(!invChurch) {
+    alert('Nenhuma igreja selecionada para reiniciar o inventário.');
+    return;
+  }
+  const igreja = db.igrejas.find(ig => ig.codigo === invChurch);
+  const nomeIgreja = igreja ? igreja.nome : invChurch;
+  if(!confirm(`Reiniciar inventário de "${nomeIgreja}"? Todos os status dessa igreja serão apagados.`)) return;
+  db.bens.filter(b => b.localidade === invChurch).forEach(b => { b.invStatus = 'pendente'; b.invDep = ''; b.invObs = ''; });
+  saveDB(); refreshAll(); renderBens();
+  toast(`Inventário de "${nomeIgreja}" reiniciado.`);
+}
+function cadastroRapido() {
+  const v=document.getElementById('bc-input').value.trim();
+  openModal('modal-bem'); editId=null; fillBemForm();
+  document.getElementById('b-bc').value=v;
+}
+
+// ═══════════════════════════════════════════════
+// BENS TABLE
+// ═══════════════════════════════════════════════
+function renderBens() {
+  const q=(document.getElementById('s-q')?.value||'').toLowerCase();
+  const st=document.getElementById('s-st')?.value||'';
+  const inv=document.getElementById('s-inv')?.value||'';
+  const dep=document.getElementById('s-dep')?.value||'';
+  const igFilter=document.getElementById('s-ig')?.value||'';
+  // Populate igreja filter dropdown — usuário restrito vê só sua igreja
+  const igSel=document.getElementById('s-ig');
+  if(igSel){
+    const isRestricted = currentUser && !currentUser.master && currentUser.church;
+    const igjesPermitidas = isRestricted
+      ? db.igrejas.filter(ig => ig.codigo === currentUser.church)
+      : db.igrejas;
+    const curIgVal = isRestricted ? currentUser.church : igSel.value;
+    igSel.innerHTML = isRestricted ? '' : '<option value="">Todas as igrejas</option>';
+    igjesPermitidas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===curIgVal)o.selected=true;igSel.appendChild(o);});
+    igSel.disabled = !!isRestricted;
+    if(!isRestricted && igFilter) igSel.value=igFilter;
+  }
+  // Restringe ao banco de bens permitido para o usuário logado
+  const bensBanco = (currentUser && !currentUser.master && currentUser.church)
+    ? db.bens.filter(b => b.localidade === currentUser.church)
+    : db.bens;
+  let bens=bensBanco.filter(b=>{
+    if(igFilter&&b.localidade!==igFilter)return false;
+    if(st&&b.status!==st)return false;
+    if(dep&&b.dependencia!==dep)return false;
+    if(inv==='sem-dep')return !b.dependencia;
+    if(inv&&b.invStatus!==inv)return false;
+    if(q&&!b.nome.toLowerCase().includes(q)&&!b.codigo.toLowerCase().includes(q)&&!b.barcode.includes(q))return false;
+    return true;
+  });
+  const total=bens.length;
+  const pages=Math.max(1,Math.ceil(total/PER_PAGE));
+  if(curPage>pages)curPage=1;
+  const slice=bens.slice((curPage-1)*PER_PAGE,curPage*PER_PAGE);
+  // Atualiza totais com base nos bens filtrados
+  const filtTotAq=bens.reduce((s,b)=>s+(parseFloat(b.valorAquisicao)||0),0);
+  const filtTotDep=bens.reduce((s,b)=>s+(parseFloat(b.valorDepreciacao)||0),0);
+  const filtTotAt=bens.reduce((s,b)=>s+(parseFloat(b.valorAtual)||0),0);
+  document.getElementById('tot-aq').textContent=fmtBRL(filtTotAq);
+  document.getElementById('tot-dep').textContent=fmtBRL(filtTotDep);
+  document.getElementById('tot-at').textContent=fmtBRL(filtTotAt);
+  // Card de contagem por tipo quando há filtro ativo de busca ou igreja+dependência
+  const countCard=document.getElementById('tot-count-card');
+  const hasFilter=q||igFilter||dep||st||inv;
+  if(hasFilter){
+    const label=q?`"${q}"`:dep?`Dep: ${dep}`:igFilter?(db.igrejas.find(x=>x.codigo===igFilter)?.nome||igFilter):'Filtrado';
+    document.getElementById('tot-count-label').textContent=`Total — ${label}`;
+    document.getElementById('tot-count').textContent=total+' item'+(total!==1?'s':'');
+    countCard.style.display='block';
+  } else {
+    countCard.style.display='none';
+  }
+  // Ajusta grid de totais dinamicamente
+  document.getElementById('totals-bar').style.gridTemplateColumns=hasFilter?'repeat(4,1fr)':'repeat(3,1fr)';
+  const lbl={confirmado:'Confirmado',problema:'Problema',pendente:'Pendente'};
+  const dotCls={confirmado:'id-ok',problema:'id-prob',pendente:'id-pend'};
+  const stBadge={Ativo:'bg',Depreciado:'by',Baixado:'bm'};
+  document.getElementById('bens-tbody').innerHTML=slice.map(b=>{
+    const igNome=db.igrejas.find(x=>x.codigo===b.localidade)?.nome||b.localidade||'—';
+    return `
+    <tr>
+      <td><span class="inv-dot ${dotCls[b.invStatus]||'id-pend'}" title="${lbl[b.invStatus]||'Pendente'}"></span></td>
+      <td><span class="tag">${b.codigo}</span></td>
+      <td style="font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.nome}</td>
+      <td style="font-size:0.75rem;color:var(--accent);font-weight:600;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${igNome}">${igNome}</td>
+      <td style="font-size:0.78rem;color:var(--text-muted)">${b.dependencia||'<span style="color:var(--red);font-size:0.75rem">sem dep.</span>'}</td>
+      <td class="val-cell">${fmtBRL(b.valorAquisicao)}</td>
+      <td class="val-deprec">${fmtBRL(b.valorDepreciacao)}</td>
+      <td class="val-cell" style="color:var(--green)">${fmtBRL(b.valorAtual)}</td>
+      <td><span class="badge ${stBadge[b.status]||'bm'}">${b.status}</span></td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost btn-sm" onclick="editBem(${b.id})" title="Editar">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="delBem(${b.id})" title="Remover">🗑️</button>
+        </div>
+      </td>
+    </tr>`;}).join('');
+  document.getElementById('pag-info').textContent=`${total} bens · Página ${curPage} de ${pages}`;
+  const pb=document.getElementById('pag-btns'); pb.innerHTML='';
+  for(let i=1;i<=pages;i++){
+    const btn=document.createElement('button'); btn.textContent=i;
+    if(i===curPage)btn.classList.add('active');
+    btn.onclick=()=>{curPage=i;renderBens();};
+    pb.appendChild(btn);
+  }
+}
+function editBem(id) { editId=id; const b=db.bens.find(x=>x.id===id); fillBemForm(b); openModal('modal-bem'); }
+function delBem(id) { if(!confirm('Remover este bem?'))return; db.bens=db.bens.filter(b=>b.id!==id); saveDB(); refreshAll(); renderBens(); toast('Bem removido.'); }
+
+// ═══════════════════════════════════════════════
+// LIMPAR BENS
+// ═══════════════════════════════════════════════
+function openClearBensModal() {
+  const igFilter = document.getElementById('s-ig')?.value || '';
+  const igNome = igFilter ? (db.igrejas.find(x=>x.codigo===igFilter)?.nome || igFilter) : '';
+  const totalGeral = db.bens.length;
+  const totalIgreja = igFilter ? db.bens.filter(b=>b.localidade===igFilter).length : 0;
+  const body = document.getElementById('clear-bens-body');
+  const footer = document.getElementById('clear-bens-footer');
+
+  // Aviso geral
+  let html = `<div style="background:var(--red-bg);border:1px solid rgba(224,49,49,0.25);border-radius:10px;padding:12px 16px;margin-bottom:1.25rem;display:flex;gap:10px;align-items:flex-start">
+    <span style="font-size:1.2rem;flex-shrink:0">⚠️</span>
+    <p style="font-size:0.82rem;color:var(--red);line-height:1.5"><strong>Atenção:</strong> Esta ação é irreversível. Os bens excluídos não poderão ser recuperados.</p>
+  </div>`;
+
+  let footerHtml = `<button class="btn btn-outline" onclick="closeModal('modal-clear-bens')">Cancelar</button>`;
+
+  if(igFilter && totalIgreja > 0) {
+    html += `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem">
+      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:6px">Opção 1 — Igreja filtrada</div>
+      <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">🏛️ ${igNome}</div>
+      <div style="font-size:0.82rem;color:var(--text-muted)">Serão excluídos <strong style="color:var(--red)">${totalIgreja}</strong> bem${totalIgreja!==1?'s':''} desta igreja.</div>
+    </div>`;
+    footerHtml += `<button class="btn btn-danger" onclick="clearBens('${igFilter}','${igNome.replace(/'/g,"\\'")}',${totalIgreja})">🗑️ Limpar ${igNome.length>22?igNome.slice(0,22)+'…':igNome}</button>`;
+  }
+
+  html += `
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:6px">Opção ${igFilter&&totalIgreja>0?'2':'1'} — Todos os bens</div>
+    <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">🗂️ Base completa</div>
+    <div style="font-size:0.82rem;color:var(--text-muted)">Serão excluídos <strong style="color:var(--red)">${totalGeral}</strong> bem${totalGeral!==1?'s':''} de todas as igrejas.</div>
+  </div>`;
+  footerHtml += `<button class="btn btn-danger" style="background:var(--red);color:white;border:none" onclick="clearBens(null,null,${totalGeral})">🗑️ Limpar TUDO</button>`;
+
+  body.innerHTML = html;
+  footer.innerHTML = footerHtml;
+  openModal('modal-clear-bens');
+}
+
+function clearBens(igCod, igNome, count) {
+  const scope = igCod ? `todos os ${count} bens de "${igNome}"` : `todos os ${count} bens do sistema`;
+  if(!confirm(`Confirma a exclusão de ${scope}?\n\nEsta ação NÃO pode ser desfeita.`)) return;
+  if(igCod) {
+    db.bens = db.bens.filter(b => b.localidade !== igCod);
+  } else {
+    db.bens = [];
+    db.nextId = 1;
+  }
+  closeModal('modal-clear-bens');
+  saveDB(); refreshAll(); renderBens();
+  toast(`${count} bem${count!==1?'s':''} excluído${count!==1?'s':''}!`, 'err');
+}
+function fillBemForm(b=null) {
+  document.getElementById('bem-title').textContent=b?'Editar Bem':'Novo Bem';
+  document.getElementById('b-nome').value=b?.nome||'';
+  document.getElementById('b-cod').value=b?.codigo||'';
+  document.getElementById('b-bc').value=b?.barcode||'';
+  document.getElementById('b-dep').value=b?.dependencia||'';
+  document.getElementById('b-forn').value=b?.fornecedor||'';
+  document.getElementById('b-doc').value=b?.documento||'';
+  document.getElementById('b-dt').value=b?.dtAquisicao||'';
+  document.getElementById('b-val').value=b?.valorAquisicao||'';
+  document.getElementById('b-dep-val').value=b?.valorDepreciacao||'';
+  document.getElementById('b-val-at').value=b?.valorAtual||'';
+  document.getElementById('b-conta').value=b?.conta||'';
+  document.getElementById('b-st').value=b?.status||'Ativo';
+  // Populate church selector
+  const igSel=document.getElementById('b-ig');
+  igSel.innerHTML='';
+  db.igrejas.forEach(ig=>{ const o=document.createElement('option'); o.value=ig.codigo; o.textContent=ig.nome; igSel.appendChild(o); });
+  igSel.value=b?.localidade||selectedChurch||db.igrejas[0]?.codigo||'';
+}
+function saveBem() {
+  const nome=document.getElementById('b-nome').value.trim();
+  const cod=document.getElementById('b-cod').value.trim();
+  if(!nome||!cod){toast('Nome e Código são obrigatórios.','err');return;}
+  const igSelected=document.getElementById('b-ig').value||selectedChurch||db.igrejas[0]?.codigo||'';
+  const va=parseFloat(document.getElementById('b-val').value)||0;
+  const vd=parseFloat(document.getElementById('b-dep-val').value)||0;
+  const vat=parseFloat(document.getElementById('b-val-at').value)||va;
+  const obj={id:editId||db.nextId++,nome,codigo:cod,barcode:document.getElementById('b-bc').value.trim()||genBC(cod),localidade:igSelected,dependencia:document.getElementById('b-dep').value.trim().toUpperCase(),fornecedor:document.getElementById('b-forn').value.trim()||'NENHUM',documento:document.getElementById('b-doc').value.trim(),dtAquisicao:document.getElementById('b-dt').value,valorAquisicao:va,valorDepreciacao:vd,valorAtual:vat,conta:document.getElementById('b-conta').value.trim(),status:document.getElementById('b-st').value,invStatus:'pendente',invDep:'',invObs:''};
+  if(editId){const i=db.bens.findIndex(x=>x.id===editId);if(i>=0){obj.invStatus=db.bens[i].invStatus;obj.invDep=db.bens[i].invDep;obj.invObs=db.bens[i].invObs;db.bens[i]=obj;}}
+  else db.bens.push(obj);
+  closeModal('modal-bem'); saveDB(); refreshAll(); renderBens(); toast(editId?'Bem atualizado!':'Bem cadastrado!');
+}
+
+// ═══════════════════════════════════════════════
+// IGREJAS
+// ═══════════════════════════════════════════════
+function fillIgForm(ig=null) {
+  document.getElementById('ig-title').textContent=ig?'Editar Igreja':'Nova Igreja';
+  document.getElementById('ig-cod').value=ig?.codigo||'';
+  document.getElementById('ig-nome').value=ig?.nome||'';
+  document.getElementById('ig-end').value=ig?.endereco||'';
+  document.getElementById('ig-cid').value=ig?.cidade||'';
+  document.getElementById('ig-est').value=ig?.estado||'';
+  document.getElementById('ig-cnpj').value=ig?.cnpj||'';
+}
+function saveIg() {
+  const cod=document.getElementById('ig-cod').value.trim();
+  const nome=document.getElementById('ig-nome').value.trim();
+  if(!cod||!nome){toast('Código e Nome são obrigatórios.','err');return;}
+  // Verifica duplicata de código apenas quando é uma nova igreja OU quando o código mudou
+  const existingWithCode=db.igrejas.find(ig=>ig.codigo===cod);
+  if(existingWithCode && existingWithCode.id!==editIgId){toast('Já existe uma igreja com este código.','err');return;}
+  const igAtual=editIgId?db.igrejas.find(x=>x.id===editIgId):null;
+  const oldCod=igAtual?.codigo||null;
+  const obj={id:editIgId||'ig'+Date.now(),codigo:cod,nome,endereco:document.getElementById('ig-end').value.trim(),cidade:document.getElementById('ig-cid').value.trim(),estado:document.getElementById('ig-est').value.trim(),cnpj:document.getElementById('ig-cnpj').value.trim()};
+  if(editIgId){
+    const i=db.igrejas.findIndex(x=>x.id===editIgId);
+    if(i>=0)db.igrejas[i]=obj;
+    // Se o código mudou, atualiza todos os bens e dependências que usavam o código antigo
+    if(oldCod && oldCod!==cod){
+      db.bens.forEach(b=>{ if(b.localidade===oldCod) b.localidade=cod; });
+      db.dependencias.forEach(d=>{ if(d.localidade===oldCod) d.localidade=cod; });
+      if(selectedChurch===oldCod) selectedChurch=cod;
+    }
+  }
+  else db.igrejas.push(obj);
+  closeModal('modal-ig'); buildChurchList(); saveDB(); refreshAll(); renderIgGrid(); toast(editIgId?'Igreja atualizada!':'Igreja cadastrada!');
+}
+function editIg(id) { editIgId=id; const ig=db.igrejas.find(x=>x.id===id); fillIgForm(ig); openModal('modal-ig'); }
+function delIg(id) {
+  if(!confirm('Remover esta igreja?'))return;
+  db.igrejas=db.igrejas.filter(x=>x.id!==id);
+  if(db.igrejas.find(x=>x.codigo===selectedChurch)===undefined) selectedChurch='';
+  buildChurchList();
+  const ig=db.igrejas[0]; if(ig&&!selectedChurch) selectChurch(ig.codigo);
+  saveDB(); refreshAll(); renderIgGrid(); toast('Igreja removida.');
+}
+function renderIgGrid() {
+  const grid=document.getElementById('ig-grid');
+  document.getElementById('ig-count').textContent=`${db.igrejas.length} ${db.igrejas.length===1?'igreja':'igrejas'} cadastrada${db.igrejas.length===1?'':'s'}`;
+  if(!db.igrejas.length){
+    grid.innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="es-icon">🏛️</div><h3>Nenhuma igreja cadastrada</h3><p>Clique em "+ Nova Igreja" para começar.</p></div>`;
+    return;
+  }
+  grid.innerHTML=db.igrejas.map(ig=>{
+    const bens=db.bens.filter(b=>b.localidade===ig.codigo).length;
+    return `<div class="entity-card">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-card-title">${ig.nome}</div>
+          <div class="entity-card-code">${ig.codigo}</div>
+        </div>
+        <div class="entity-card-actions">
+          <button class="btn btn-ghost btn-sm" onclick="editIg('${ig.id}')" title="Editar">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="delIg('${ig.id}')" title="Remover">🗑️</button>
+        </div>
+      </div>
+      <div class="entity-card-body">
+        ${ig.endereco?`<p>${ig.endereco}</p>`:''}
+        ${ig.cidade?`<p><strong>${ig.cidade}${ig.estado?', '+ig.estado:''}</strong></p>`:''}
+        ${ig.cnpj?`<p>CNPJ: <strong>${ig.cnpj}</strong></p>`:''}
+        <p style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><strong style="color:var(--accent)">${bens}</strong> bem${bens!==1?'s':''} cadastrado${bens!==1?'s':''}</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════
+// DEPENDÊNCIAS
+// ═══════════════════════════════════════════════
+function saveDep() {
+  const nome=document.getElementById('dep-nome').value.trim().toUpperCase();
+  if(!nome){toast('Nome da dependência é obrigatório.','err');return;}
+  const ig=getChurch();
+  if(!ig){toast('Selecione uma igreja primeiro.','err');return;}
+  if(db.dependencias.find(d=>d.nome===nome&&d.localidade===ig.codigo)){toast('Dependência já cadastrada.','err');return;}
+  db.dependencias.push({id:'dep'+Date.now(),nome,desc:document.getElementById('dep-desc').value.trim(),localidade:ig.codigo});
+  closeModal('modal-dep'); saveDB(); refreshAll(); renderDepGrid(); toast('Dependência cadastrada!');
+  document.getElementById('dep-nome').value=''; document.getElementById('dep-desc').value='';
+}
+function delDep(id) {
+  if(!confirm('Remover esta dependência?'))return;
+  db.dependencias=db.dependencias.filter(d=>d.id!==id);
+  saveDB(); refreshAll(); renderDepGrid(); toast('Dependência removida.');
+}
+function renderDepGrid() {
+  const grid=document.getElementById('dep-grid');
+  const deps=db.dependencias.filter(d=>!selectedChurch||d.localidade===selectedChurch);
+  document.getElementById('dep-count').textContent=`${deps.length} dependência${deps.length!==1?'s':''} da igreja ativa`;
+  if(!deps.length){
+    grid.innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="es-icon">🏠</div><h3>Nenhuma dependência cadastrada</h3><p>Clique em "+ Nova Dependência" para adicionar.</p></div>`;
+    return;
+  }
+  grid.innerHTML=deps.map(d=>{
+    const bensCount=db.bens.filter(b=>b.dependencia===d.nome&&(!selectedChurch||b.localidade===selectedChurch)).length;
+    return `<div class="entity-card">
+      <div class="entity-card-header">
+        <div><div class="entity-card-title">${d.nome}</div></div>
+        <div class="entity-card-actions"><button class="btn btn-ghost btn-sm" onclick="delDep('${d.id}')">🗑️</button></div>
+      </div>
+      <div class="entity-card-body">
+        ${d.desc?`<p>${d.desc}</p>`:''}
+        <p><strong style="color:var(--accent)">${bensCount}</strong> bem${bensCount!==1?'s':''}</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════
+// IMPORTAÇÃO DEDICADA (aba)
+// ═══════════════════════════════════════════════
+let impXlsRows = null;
+let impParsed = [];
+let impColMap = {};
+
+const IMP_FIELDS = [
+  { key:'c',   label:'Código',        required:true  },
+  { key:'n',   label:'Nome',          required:true  },
+  { key:'f',   label:'Fornecedor',    required:false },
+  { key:'loc', label:'Localidade',    required:false },
+  { key:'conta',label:'Conta',        required:false },
+  { key:'doc', label:'Nº Documento',  required:false },
+  { key:'d',   label:'Dependência',   required:false },
+  { key:'dt',  label:'Dt. Aquisição', required:false },
+  { key:'va',  label:'Vl. Aquisição', required:false },
+  { key:'vd',  label:'Vl. Deprec.',   required:false },
+  { key:'vat', label:'Vl. Atual',     required:false },
+  { key:'st',  label:'Status',        required:false },
+];
+
+function impRefreshChurchSel() {
+  const sel = document.getElementById('imp-church-sel');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Selecione a igreja...</option>';
+  db.igrejas.forEach(ig => {
+    const o = document.createElement('option');
+    o.value = ig.codigo; o.textContent = ig.nome;
+    if(ig.codigo === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+  // if active church, pre-select
+  if(!cur && selectedChurch) sel.value = selectedChurch;
+}
+
+function impDragOver(e) { e.preventDefault(); document.getElementById('imp-drop').classList.add('drag-over'); }
+function impDragLeave(e) { document.getElementById('imp-drop').classList.remove('drag-over'); }
+function impDrop(e) { e.preventDefault(); document.getElementById('imp-drop').classList.remove('drag-over'); if(e.dataTransfer.files[0]) impLoadFile(e.dataTransfer.files[0]); }
+function impPickFile(inp) { if(inp.files[0]) impLoadFile(inp.files[0]); }
+
+function impLoadFile(f) {
+  const dz = document.getElementById('imp-drop');
+  dz.classList.remove('has-file');
+  document.getElementById('imp-dz-icon').textContent = '⏳';
+  document.getElementById('imp-dz-title').textContent = 'Lendo arquivo...';
+  document.getElementById('imp-dz-sub').textContent = f.name;
+
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      impXlsRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+
+      // Normaliza string: minúsculo + sem acentos
+      const normStr = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+
+      // Detecta linha do cabeçalho — procura linha que tenha "codigo" e "nome"
+      impColMap = {};
+      let hRow = -1;
+      for(let i = 0; i < impXlsRows.length; i++) {
+        const cells = impXlsRows[i].map(v => normStr(v));
+        const hasCod = cells.some(v => v === 'codigo' || v === 'cod.' || v.startsWith('codigo'));
+        const hasNome = cells.some(v => v === 'nome');
+        if(hasCod && hasNome) {
+          impXlsRows[i].forEach((h, idx) => {
+            const hs = normStr(h);
+            if((hs === 'codigo' || hs.startsWith('codigo') || hs === 'cod.') && impColMap.c === undefined) impColMap.c = idx;
+            if(hs === 'nome' && impColMap.n === undefined) impColMap.n = idx;
+            if(hs.includes('fornec') && impColMap.f === undefined) impColMap.f = idx;
+            if((hs === 'localidade' || hs.includes('localidade')) && impColMap.loc === undefined) impColMap.loc = idx;
+            if(hs === 'conta' && impColMap.conta === undefined) impColMap.conta = idx;
+            if((hs.includes('n°') || hs.includes('no ') || hs === 'documento' || hs.includes('doc')) && hs.includes('doc') && impColMap.doc === undefined) impColMap.doc = idx;
+            if((hs.includes('n°') && !hs.includes('doc')) && impColMap.doc === undefined) impColMap.doc = idx;
+            if(hs === 'no documento' || hs === 'n° documento' || hs === 'no doc' || hs === 'n° doc') impColMap.doc = idx;
+            if(hs.includes('depend') && impColMap.d === undefined) impColMap.d = idx;
+            if((hs.includes('dt.') || hs === 'dt. aquisicao' || hs.includes('dt. aq') || hs.includes('data aq')) && impColMap.dt === undefined) impColMap.dt = idx;
+            if((hs.includes('vl. aq') || hs === 'vl. aquisicao') && impColMap.va === undefined) impColMap.va = idx;
+            if((hs.includes('vl. dep') || hs.includes('deprec')) && impColMap.vd === undefined) impColMap.vd = idx;
+            if((hs.includes('vl. at') || hs === 'vl. atual') && impColMap.vat === undefined) impColMap.vat = idx;
+            if(hs === 'status' && impColMap.st === undefined) impColMap.st = idx;
+          });
+          hRow = i; break;
+        }
+      }
+
+      // Se não detectou automaticamente, usa posições fixas do relatório padrão:
+      // Código(0), Nome(1), Fornecedor(2), Localidade(3), Conta(4), NºDoc(5), Dependência(6), Dt.Aq(7), Vl.Aq(8), Vl.Dep(9), Vl.At(10), Status(11)
+      if(impColMap.c === undefined && hRow >= 0) {
+        const row = impXlsRows[hRow];
+        impColMap = {};
+        row.forEach((h,idx) => {
+          impColMap['_raw_'+idx] = normStr(h);
+        });
+        // Tenta mapear por posição quando há exatamente 12 colunas não-vazias
+        const nonEmpty = row.map((v,i)=>({v:normStr(v),i})).filter(x=>x.v);
+        if(nonEmpty.length >= 10) {
+          impColMap = {c:nonEmpty[0].i, n:nonEmpty[1].i, f:nonEmpty[2].i, loc:nonEmpty[3].i,
+            conta:nonEmpty[4].i, doc:nonEmpty[5].i, d:nonEmpty[6].i, dt:nonEmpty[7].i,
+            va:nonEmpty[8].i, vd:nonEmpty[9].i, vat:nonEmpty[10]?.i, st:nonEmpty[11]?.i};
+        }
+      }
+
+      // Função auxiliar para parsear data
+      const parseDate = v => {
+        if(!v) return '';
+        if(v instanceof Date) return v.toISOString().slice(0,10);
+        if(typeof v === 'number') { const d=new Date((v-25569)*86400*1000); return d.toISOString().slice(0,10); }
+        return String(v).replace(' 00:00:00','').replace('T00:00:00.000Z','').trim();
+      };
+
+      // Parse das linhas de dados
+      impParsed = [];
+      const startRow = hRow >= 0 ? hRow + 1 : 0;
+      for(let i = startRow; i < impXlsRows.length; i++) {
+        const row = impXlsRows[i];
+        // Pula linhas completamente vazias
+        if(row.every(v => String(v).trim() === '')) continue;
+        const cod = String(row[impColMap.c]||'').trim();
+        // Pula linhas sem código, totais ou cabeçalhos repetidos
+        if(!cod) continue;
+        const nc = normStr(cod);
+        if(nc === 'total' || nc === 'codigo' || nc.startsWith('total ')) continue;
+        const nome = String(row[impColMap.n]||'').trim();
+        if(!nome) continue;
+        const isDup = !!db.bens.find(b => b.codigo === cod);
+        impParsed.push({
+          cod, nome,
+          fornecedor: String(row[impColMap.f]||'NENHUM').trim() || 'NENHUM',
+          localidade: String(row[impColMap.loc]||'').trim(),
+          conta: String(row[impColMap.conta]||'').trim(),
+          documento: String(row[impColMap.doc]||'').trim(),
+          dependencia: String(row[impColMap.d]||'').trim(),
+          dtAquisicao: parseDate(row[impColMap.dt]),
+          va: parseFloat(row[impColMap.va])||0,
+          vd: parseFloat(row[impColMap.vd])||0,
+          vat: parseFloat(row[impColMap.vat])||0,
+          status: String(row[impColMap.st]||'Ativo').trim() || 'Ativo',
+          isDup,
+        });
+      }
+
+      // Update UI
+      dz.classList.add('has-file');
+      document.getElementById('imp-dz-icon').textContent = '✅';
+      document.getElementById('imp-dz-title').textContent = f.name;
+      document.getElementById('imp-dz-sub').textContent = `${impParsed.length} registros encontrados`;
+
+      impRenderColMap();
+      impRenderPreview();
+      impCheckReady();
+
+      document.getElementById('imp-empty-state').style.display = 'none';
+      document.getElementById('imp-content').style.display = 'flex';
+      document.getElementById('imp-colmap-panel').style.display = 'block';
+
+    } catch(err) {
+      document.getElementById('imp-dz-icon').textContent = '❌';
+      document.getElementById('imp-dz-title').textContent = 'Erro ao ler arquivo';
+      document.getElementById('imp-dz-sub').textContent = err.message;
+    }
+  };
+  r.readAsBinaryString(f);
+}
+
+function impRenderColMap() {
+  const table = document.getElementById('imp-colmap-table');
+  table.innerHTML = `<tr><th>Campo</th><th>Coluna detectada</th><th>Situação</th></tr>` +
+    IMP_FIELDS.map(f => {
+      const found = impColMap[f.key] !== undefined;
+      const colIdx = impColMap[f.key];
+      // Get sample value from first data row
+      let sample = '';
+      if(found && impParsed.length) {
+        const keys = {c:'cod',n:'nome',f:'fornecedor',loc:'localidade',conta:'conta',doc:'documento',d:'dependencia',dt:'dtAquisicao',va:'va',vd:'vd',vat:'vat',st:'status'};
+        sample = impParsed[0][keys[f.key]] || '';
+        if(typeof sample === 'number') sample = sample.toString();
+        if(sample.length > 28) sample = sample.slice(0,28)+'…';
+      }
+      const badge = found
+        ? `<span class="col-badge-ok">✓ Col ${colIdx}</span>`
+        : (f.required ? `<span class="col-badge-miss">✗ Não encontrada</span>` : `<span style="color:var(--text-light);font-size:0.7rem">—</span>`);
+      return `<tr>
+        <td class="col-field">${f.label}${f.required?'<span style="color:var(--red)">*</span>':''}</td>
+        <td class="col-detected ${found?'col-ok':f.required?'col-miss':''}">${sample || (found?'(vazio)':'—')}</td>
+        <td>${badge}</td>
+      </tr>`;
+    }).join('');
+}
+
+function impRenderPreview() {
+  const skipDup = document.getElementById('imp-skip-dup').checked;
+  const newItems = impParsed.filter(r => !r.isDup);
+  const dupItems = impParsed.filter(r => r.isDup);
+  const errItems = impParsed.filter(r => !r.cod || !r.nome);
+
+  document.getElementById('imp-s-total').textContent = impParsed.length;
+  document.getElementById('imp-s-new').textContent = newItems.length;
+  document.getElementById('imp-s-dup').textContent = dupItems.length;
+  document.getElementById('imp-s-err').textContent = errItems.length;
+
+  const shown = impParsed.slice(0, 200);
+  document.getElementById('imp-preview-count').textContent = `Mostrando ${shown.length} de ${impParsed.length} registros`;
+
+  document.getElementById('imp-preview-tbody').innerHTML = shown.map(row => `
+    <tr class="${row.isDup?'dup-row':''}">
+      <td>${row.isDup ? '<span class="pv-dup">Duplicado</span>' : '<span class="pv-new">Novo</span>'}</td>
+      <td><span class="pv-code">${row.cod}</span></td>
+      <td style="font-weight:500;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${row.nome}</td>
+      <td style="font-size:0.73rem;color:var(--text-muted)">${row.dependencia||'—'}</td>
+      <td style="font-size:0.73rem;color:var(--text-muted)">${row.dtAquisicao||'—'}</td>
+      <td style="font-variant-numeric:tabular-nums;font-weight:600">${fmtBRL(row.va)}</td>
+      <td style="font-size:0.73rem;color:var(--text-muted)">${fmtBRL(row.vd)}</td>
+      <td style="font-variant-numeric:tabular-nums;font-weight:600;color:var(--green)">${fmtBRL(row.vat)}</td>
+      <td><span class="badge ${row.status==='Ativo'?'bg':row.status==='Depreciado'?'by':'bm'}">${row.status}</span></td>
+    </tr>`).join('');
+}
+
+function impCheckReady() {
+  const hasFile = impParsed.length > 0;
+  const hasChurch = !!document.getElementById('imp-church-sel').value;
+  document.getElementById('imp-exec-btn').disabled = !(hasFile && hasChurch);
+  if(hasFile) impRenderPreview();
+}
+
+function doImportFull() {
+  const ig = document.getElementById('imp-church-sel').value;
+  if(!ig) { toast('Selecione a igreja destino.','err'); return; }
+  if(!impParsed.length) { toast('Nenhum dado para importar.','err'); return; }
+
+  const skipDup = document.getElementById('imp-skip-dup').checked;
+  const autoDep = document.getElementById('imp-auto-dep').checked;
+
+  const log = [];
+  let cnt = 0, skipped = 0, errs = 0;
+
+  for(const row of impParsed) {
+    if(!row.cod || !row.nome) { log.push({type:'err', msg:`Linha ignorada — sem código ou nome`}); errs++; continue; }
+    if(row.isDup && skipDup) { log.push({type:'warn', msg:`${row.cod} — já cadastrado, ignorado`}); skipped++; continue; }
+
+    db.bens.push({
+      id: db.nextId++,
+      codigo: row.cod,
+      barcode: genBC(row.cod),
+      nome: row.nome,
+      localidade: ig,
+      dependencia: row.dependencia,
+      fornecedor: row.fornecedor || 'NENHUM',
+      documento: row.documento,
+      dtAquisicao: row.dtAquisicao,
+      valorAquisicao: row.va,
+      valorDepreciacao: row.vd,
+      valorAtual: row.vat,
+      conta: row.conta,
+      status: row.status || 'Ativo',
+      invStatus: 'pendente', invDep: '', invObs: ''
+    });
+
+    if(autoDep && row.dependencia && !db.dependencias.find(d=>d.nome===row.dependencia&&d.localidade===ig)) {
+      db.dependencias.push({id:'dep'+Date.now()+'_'+cnt, nome:row.dependencia, desc:'', localidade:ig});
+    }
+    log.push({type:'ok', msg:`${row.cod} — ${row.nome.slice(0,50)} importado`});
+    cnt++;
+  }
+
+  // Render log
+  const logWrap = document.getElementById('imp-log-wrap');
+  logWrap.style.display = 'block';
+  document.getElementById('imp-log-body').innerHTML = [
+    {type:'info', msg:`Importação concluída: ${cnt} novos · ${skipped} ignorados · ${errs} erros`},
+    ...log
+  ].map(l => `<div class="log-item log-${l.type}"><div class="log-dot"></div><span>${l.msg}</span></div>`).join('');
+
+  // Mark dups in parsed
+  impParsed.forEach(r => { if(db.bens.find(b=>b.codigo===r.cod)) r.isDup=true; });
+  impRenderPreview();
+
+  refreshAll(); renderBens(); renderIgGrid(); renderDepGrid();
+  saveDB(); toast(`${cnt} bens importados com sucesso!`);
+}
+
+// ═══════════════════════════════════════════════
+// IMPORT XLS (modal legado — mantido para compatibilidade)
+function dropXLS(e){e.preventDefault();if(e.dataTransfer.files[0])readXLS(e.dataTransfer.files[0]);}
+function pickXLS(inp){if(inp.files[0])readXLS(inp.files[0]);}
+function readXLS(f){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'binary'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      xlsRows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      const m=document.getElementById('imp-msg');
+      m.style.display='block';m.style.background='var(--green-bg)';m.style.border='1px solid rgba(47,158,68,0.3)';m.style.color='var(--green)';m.style.borderRadius='8px';
+      m.textContent=`✅ ${f.name} — ${xlsRows.length} linhas lidas.`;
+      document.getElementById('btn-imp').disabled=false;
+    }catch{const m=document.getElementById('imp-msg');m.style.display='block';m.style.color='var(--red)';m.style.background='var(--red-bg)';m.textContent='❌ Erro ao ler o arquivo.';}
+  };
+  r.readAsBinaryString(f);
+}
+function doImport(){
+  const ig=document.getElementById('imp-ig').value;
+  if(!ig){toast('Selecione a igreja.','err');return;}
+  if(!xlsRows)return;
+  let hRow=-1,cm={};
+  const _norm=s=>String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  for(let i=0;i<xlsRows.length;i++){
+    const r=xlsRows[i].map(v=>_norm(v));
+    if(r.some(v=>v.includes('codigo')||v==='nome'||v.includes('cod.'))){
+      xlsRows[i].forEach((h,idx)=>{
+        const hs=_norm(h);
+        if((hs.includes('codigo')||hs.includes('cod.'))&&!cm.c)cm.c=idx;
+        if((hs==='nome'||hs.includes('nome do bem'))&&!cm.n)cm.n=idx;
+        if(hs.includes('fornec')&&!cm.f)cm.f=idx;
+        if(hs.includes('depend')&&!cm.d)cm.d=idx;
+        if((hs.includes('n° doc')||hs.includes('no doc')||hs.includes('documento'))&&!cm.doc)cm.doc=idx;
+        if((hs.includes('dt.')||hs.includes('aquisi'))&&!cm.dt)cm.dt=idx;
+        if((hs.includes('vl. aq')||hs.includes('vl aq'))&&!cm.va)cm.va=idx;
+        if((hs.includes('vl. dep')||hs.includes('deprec'))&&!cm.vd)cm.vd=idx;
+        if((hs.includes('vl. at')||hs.includes('valor at'))&&!cm.vat)cm.vat=idx;
+        if(hs==='status')cm.st=idx;
+        if(hs.includes('conta'))cm.conta=idx;
+      });
+      hRow=i;break;
+    }
+  }
+  if(cm.c===undefined){cm={c:0,n:1,d:2,dt:3,va:4,vd:5,vat:6,st:7};if(hRow<0)hRow=0;}
+  let cnt=0;
+  for(let i=hRow+1;i<xlsRows.length;i++){
+    const row=xlsRows[i];const cod=String(row[cm.c]||'').trim();
+    if(!cod||_norm(cod)==='total'||_norm(cod).includes('codigo'))continue;
+    const nome=String(row[cm.n]||'').trim();if(!nome)continue;
+    if(db.bens.find(b=>b.codigo===cod))continue;
+    const dtR=row[cm.dt];let dt='';
+    if(dtR instanceof Date)dt=dtR.toISOString().slice(0,10);
+    else if(typeof dtR==='number'){const d=new Date((dtR-25569)*86400*1000);dt=d.toISOString().slice(0,10);}
+    else dt=String(dtR||'').replace(' 00:00:00','');
+    const dep=String(row[cm.d]||'').trim();
+    const va=parseFloat(row[cm.va])||0;
+    const vd=parseFloat(row[cm.vd])||0;
+    const vat=parseFloat(row[cm.vat])||0;
+    db.bens.push({id:db.nextId++,codigo:cod,barcode:genBC(cod),nome,localidade:ig,dependencia:dep,fornecedor:String(row[cm.f]||'NENHUM').trim(),documento:String(row[cm.doc]||'').trim(),dtAquisicao:dt,valorAquisicao:va,valorDepreciacao:vd,valorAtual:vat,conta:String(row[cm.conta]||'').trim(),status:String(row[cm.st]||'Ativo').trim(),invStatus:'pendente',invDep:'',invObs:''});
+    // Add dependência
+    if(dep&&!db.dependencias.find(d=>d.nome===dep&&d.localidade===ig)){
+      db.dependencias.push({id:'dep'+Date.now()+'_'+cnt,nome:dep,desc:'',localidade:ig});
+    }
+    cnt++;
+  }
+  closeModal('modal-import');xlsRows=null;document.getElementById('btn-imp').disabled=true;
+  saveDB();refreshAll();renderBens();renderIgGrid();renderDepGrid();toast(`${cnt} bens importados!`);
+}
+
+// ═══════════════════════════════════════════════
+// RELATÓRIO
+// ═══════════════════════════════════════════════
+function renderRel() {
+  // Popula seletor de igreja do relatório
+  const relSel=document.getElementById('rel-church-sel');
+  if(relSel){
+    const cur=relSel.value||relChurch;
+    relSel.innerHTML='<option value="">Todas as igrejas</option>';
+    db.igrejas.forEach(ig=>{const o=document.createElement('option');o.value=ig.codigo;o.textContent=ig.nome;if(ig.codigo===cur)o.selected=true;relSel.appendChild(o);});
+    if(relChurch)relSel.value=relChurch;
+  }
+  const b=relChurch?db.bens.filter(x=>x.localidade===relChurch):db.bens;
+  const ok=b.filter(x=>x.invStatus==='confirmado'),prob=b.filter(x=>x.invStatus==='problema'),pend=b.filter(x=>x.invStatus==='pendente');
+  document.getElementById('rel-cards').innerHTML=[
+    ['Confirmados',ok.length,'var(--green)'],
+    ['Com Problema',prob.length,'var(--yellow)'],
+    ['Não Verificados',pend.length,'var(--text-muted)']
+  ].map(([l,v,c])=>`<div class="rel-card"><div class="rel-card-label">${l}</div><div class="rel-card-val" style="color:${c}">${v}</div></div>`).join('');
+  const all=[...ok,...prob,...pend];
+  const lbl={confirmado:'Confirmado',problema:'Problema',pendente:'Pendente'};
+  const clr={confirmado:'var(--green)',problema:'var(--yellow)',pendente:'var(--text-muted)'};
+  document.getElementById('rel-tbody').innerHTML=all.map(b=>`<tr>
+    <td style="color:${clr[b.invStatus]};font-size:0.78rem;font-weight:600">${lbl[b.invStatus]}</td>
+    <td><span class="tag">${b.codigo}</span></td>
+    <td style="font-size:0.8rem;font-weight:500">${b.nome}</td>
+    <td style="font-size:0.78rem">${b.dependencia||'<span style="color:var(--red)">—</span>'}</td>
+    <td style="font-size:0.78rem">${b.invDep||'—'}</td>
+    <td class="val-cell" style="color:var(--green)">${fmtBRL(b.valorAtual)}</td>
+    <td style="font-size:0.72rem;color:var(--text-muted)">${b.invObs||'—'}</td>
+  </tr>`).join('');
+}
+function exportCSV() {
+  const b=relChurch?db.bens.filter(x=>x.localidade===relChurch):db.bens;
+  const rows=[['Status Inventário','Código','Nome','Dep. Cadastrada','Dep. Confirmada','Vl. Aquisição','Vl. Depreciação','Vl. Atual','Status Bem']];
+  b.forEach(x=>rows.push([x.invStatus,x.codigo,x.nome,x.dependencia,x.invDep||'',x.valorAquisicao,x.valorDepreciacao||0,x.valorAtual,x.status]));
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='inventario.csv';a.click();
+}
+
+// ═══════════════════════════════════════════════
+// CÂMERA — LEITOR DE CÓDIGO DE BARRAS
+// ═══════════════════════════════════════════════
+let camStream = null;
+let camReader = null;
+let camActive = false;
+let camDevices = [];
+let camDeviceId = null;
+
+async function openCamera() {
+  const overlay = document.getElementById('cam-overlay');
+  overlay.classList.add('open');
+  document.getElementById('btn-cam').classList.add('active');
+  setCamStatus('info', 'Iniciando câmera...');
+  try {
+    await startCameraScanner();
+  } catch(e) {
+    setCamStatus('error', 'Não foi possível acessar a câmera. Verifique as permissões.');
+    console.error('Câmera erro:', e);
+  }
+}
+
+function closeCamera() {
+  stopCameraScanner();
+  document.getElementById('cam-overlay').classList.remove('open');
+  document.getElementById('btn-cam').classList.remove('active');
+}
+
+function setCamStatus(type, msg) {
+  const el = document.getElementById('cam-status');
+  el.className = 'cam-status' + (type === 'success' ? ' success' : type === 'error' ? ' error' : '');
+  el.innerHTML = msg;
+}
+
+async function listCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    camDevices = devices.filter(d => d.kind === 'videoinput');
+    const wrap = document.getElementById('cam-sel-wrap');
+    const sel = document.getElementById('cam-sel');
+    if(camDevices.length > 1) {
+      sel.innerHTML = camDevices.map((d,i) =>
+        `<option value="${d.deviceId}">${d.label || 'Câmera ' + (i+1)}</option>`
+      ).join('');
+      // Prefere câmera traseira em mobile
+      const back = camDevices.find(d => /back|rear|traseira|environment/i.test(d.label));
+      if(back) { sel.value = back.deviceId; camDeviceId = back.deviceId; }
+      else camDeviceId = camDevices[0].deviceId;
+      wrap.classList.add('visible');
+    } else {
+      wrap.classList.remove('visible');
+      camDeviceId = camDevices[0]?.deviceId || null;
+    }
+  } catch(e) { console.warn('enumerateDevices:', e); }
+}
+
+async function startCameraScanner() {
+  stopCameraScanner();
+  camActive = true;
+
+  // Solicita acesso à câmera (prefere câmera traseira)
+  const constraints = {
+    video: camDeviceId
+      ? { deviceId: { exact: camDeviceId }, facingMode: { ideal: 'environment' } }
+      : { facingMode: { ideal: 'environment' } }
+  };
+
+  camStream = await navigator.mediaDevices.getUserMedia(constraints);
+  const video = document.getElementById('cam-video');
+  video.srcObject = camStream;
+  await video.play();
+
+  // Atualiza lista de câmeras após permissão concedida
+  await listCameras();
+  setCamStatus('info', '📷 Aponte para o código de barras...');
+
+  // Tenta usar BarcodeDetector nativo primeiro (Chrome/Android)
+  if('BarcodeDetector' in window) {
+    runNativeBarcodeDetector(video);
+  } else if(window.ZXingBrowser) {
+    runZXingScanner();
+  } else {
+    // Fallback: polling com canvas + ZXing via fetch dinâmico
+    setCamStatus('error', 'Biblioteca de leitura não disponível. Tente atualizar o navegador.');
+  }
+}
+
+// ── Método 1: BarcodeDetector nativo (Chrome 83+, Android Chrome) ──
+async function runNativeBarcodeDetector(video) {
+  const formats = ['code_128','ean_13','ean_8','code_39','code_93','upc_a','upc_e','itf','codabar','data_matrix','qr_code','aztec','pdf417'];
+  let supported = formats;
+  try { supported = await BarcodeDetector.getSupportedFormats(); } catch(e) {}
+  const detector = new BarcodeDetector({ formats: supported });
+
+  async function tick() {
+    if(!camActive) return;
+    try {
+      const barcodes = await detector.detect(video);
+      if(barcodes.length) {
+        const code = barcodes[0].rawValue;
+        onBarcodeDetected(code);
+        return;
+      }
+    } catch(e) {}
+    if(camActive) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ── Método 2: ZXing Browser (iOS Safari, Firefox, outros) ──
+function runZXingScanner() {
+  try {
+    const hints = new Map();
+    const video = document.getElementById('cam-video');
+    camReader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
+      delayBetweenScanAttempts: 200,
+      delayBetweenScanSuccess: 500
+    });
+    camReader.decodeFromVideoElement(video, (result, err) => {
+      if(!camActive) return;
+      if(result) { onBarcodeDetected(result.getText()); }
+    });
+  } catch(e) {
+    setCamStatus('error', 'Erro ao iniciar leitor: ' + e.message);
+  }
+}
+
+function stopCameraScanner() {
+  camActive = false;
+  if(camReader) { try { camReader.reset(); } catch(e){} camReader = null; }
+  if(camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  const video = document.getElementById('cam-video');
+  if(video) video.srcObject = null;
+}
+
+async function switchCamera(deviceId) {
+  camDeviceId = deviceId;
+  setCamStatus('info', 'Trocando câmera...');
+  await startCameraScanner();
+}
+
+function onBarcodeDetected(code) {
+  if(!camActive) return;
+  // Flash visual
+  setCamStatus('success', `✅ Código detectado: <strong>${code}</strong>`);
+  // Vibração (mobile)
+  if(navigator.vibrate) navigator.vibrate([60, 30, 60]);
+  // Preenche o input e faz a busca
+  document.getElementById('bc-input').value = code;
+  bcLive(code);
+  // Pequeno delay para feedback visual, depois fecha e busca
+  setTimeout(() => {
+    closeCamera();
+    doScan();
+    document.getElementById('bc-input').focus();
+  }, 700);
+}
+
+// Fechar ao clicar fora do modal
+document.getElementById('cam-overlay').addEventListener('click', function(e) {
+  if(e.target === this) closeCamera();
+});
+
+// ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════
+// AUTH — Supabase Auth (login/senha gerenciados pelo Supabase)
+// ═══════════════════════════════════════════════
+const AUTH_EMAIL_DOMAIN = '@caieiraspatrimonio.local';
+const ADMIN_USERS_FN_URL = `${SUPABASE_URL}/functions/v1/admin-users`;
+let currentUser = null; // { id, login, nome, church, master }
+let profiles = []; // lista de perfis (para tela de Configurações)
+
+function loginToEmail(login) { return login.toLowerCase().trim() + AUTH_EMAIL_DOMAIN; }
+
+// Carrega a lista de perfis (usuários) do Supabase
+async function loadUsers() {
+  try {
+    const { data, error } = await window._sb.from('CaieirasPatrimonio_perfis').select('*').order('created_at');
+    if(error) throw error;
+    profiles = data || [];
+  } catch(e) { profiles = []; }
+}
+
+// Chama a Edge Function admin-users (criar/editar/trocar senha/excluir)
+async function callAdminUsers(action, payload) {
+  const { data: sessionData } = await window._sb.auth.getSession();
+  const token = sessionData?.session?.access_token || '';
+  const resp = await fetch(ADMIN_USERS_FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ action, ...payload })
+  });
+  const out = await resp.json().catch(() => ({}));
+  if(!resp.ok || out.error) throw new Error(out.error || 'Erro ao processar solicitação.');
+  return out;
+}
+
+async function doLogin() {
+  const u = document.getElementById('login-user').value.trim().toLowerCase();
+  const p = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-error');
+  if(!u || !p) { err.textContent='Preencha usuário e senha.'; err.classList.add('show'); return; }
+
+  const { data, error } = await window._sb.auth.signInWithPassword({ email: loginToEmail(u), password: p });
+  if(error || !data?.user) { err.textContent='Usuário ou senha incorretos.'; err.classList.add('show'); return; }
+
+  const ok = await loadCurrentProfile(data.user.id);
+  if(!ok) {
+    await window._sb.auth.signOut();
+    err.textContent='Perfil de usuário não encontrado. Contate o administrador.';
+    err.classList.add('show');
+    return;
+  }
+  err.classList.remove('show');
+  afterLogin();
+}
+
+async function loadCurrentProfile(userId) {
+  try {
+    const { data, error } = await window._sb.from('CaieirasPatrimonio_perfis').select('*').eq('id', userId).maybeSingle();
+    if(error || !data) return false;
+    currentUser = { id: data.id, login: data.login, nome: data.nome||data.login, church: data.church||'', master: !!data.is_master };
+    return true;
+  } catch(e) { return false; }
+}
+
+// Restaura sessão já ativa (ex: usuário deu refresh na página)
+async function restoreSession() {
+  try {
+    const { data } = await window._sb.auth.getSession();
+    if(data?.session?.user) {
+      const ok = await loadCurrentProfile(data.session.user.id);
+      if(ok) { afterLogin(); return true; }
+    }
+  } catch(e) {}
+  return false;
+}
+
+function afterLogin() {
+  document.getElementById('login-screen').classList.remove('show');
+  // Header
+  document.getElementById('user-info-bar').style.display='flex';
+  document.getElementById('header-username').textContent = currentUser.nome;
+  document.getElementById('header-userrole').textContent = currentUser.master ? 'Master' : (getChurchNameByCode(currentUser.church)||currentUser.church);
+  document.getElementById('header-avatar').textContent = (currentUser.nome||'?')[0].toUpperCase();
+  // Tabs — oculta abas restritas para não-master
+  applyTabPermissions();
+  // Se não-master, pré-seleciona a igreja do usuário no inventário
+  if(!currentUser.master && currentUser.church) {
+    invChurch = currentUser.church;
+    const sel = document.getElementById('inv-church-sel');
+    if(sel) sel.value = currentUser.church;
+    refreshAll(); renderBens(); renderRel();
+    // Bloqueia seletor de igrejas no inventário
+    if(sel) sel.disabled = true;
+    // Bloqueia seletor do relatório
+    const relSel = document.getElementById('rel-church-sel');
+    if(relSel) { relSel.value = currentUser.church; relSel.disabled = true; selectRelChurch(currentUser.church); }
+  }
+}
+
+function applyTabPermissions() {
+  if(!currentUser) return;
+  // Aba Configurações: só master
+  const cfgBtn = document.getElementById('tab-btn-config');
+  if(cfgBtn) cfgBtn.style.display = currentUser.master ? '' : 'none';
+  if(!currentUser.master) {
+    // Usuário restrito vê Inventário e Bens (filtrados pela igreja dele).
+    // Continua ocultando Cadastros, Importação, Relatório e Configurações.
+    const abasPermitidas = ['Inventário', 'Bens'];
+    document.querySelectorAll('.tab').forEach(t => {
+      const txt = t.textContent.trim();
+      t.style.display = abasPermitidas.some(a => txt.startsWith(a)) ? '' : 'none';
+    });
+  } else {
+    // Master: mostra tudo
+    document.querySelectorAll('.tab').forEach(t => t.style.display = '');
+    if(cfgBtn) cfgBtn.style.display = '';
+  }
+}
+
+function getChurchNameByCode(cod) {
+  if(!cod) return '';
+  const ig = (db.igrejas||[]).find(x=>x.codigo===cod);
+  return ig ? ig.nome : cod;
+}
+
+async function doLogout() {
+  await window._sb.auth.signOut();
+  currentUser = null;
+  document.getElementById('login-screen').classList.add('show');
+  document.getElementById('login-user').value='';
+  document.getElementById('login-pass').value='';
+  document.getElementById('user-info-bar').style.display='none';
+  // Restaura tabs
+  document.querySelectorAll('.tab').forEach(t=>t.style.display='');
+  document.getElementById('tab-btn-config').style.display='none';
+  // Remove bloqueios
+  const invSel=document.getElementById('inv-church-sel');
+  if(invSel) invSel.disabled=false;
+  const relSel=document.getElementById('rel-church-sel');
+  if(relSel) relSel.disabled=false;
+  invChurch=''; relChurch='';
+}
+
+// ── Gerenciamento de Usuários (aba Config) ──
+function renderUsersGrid() {
+  const grid = document.getElementById('users-grid');
+  if(!grid) return;
+  if(!profiles.length) { grid.innerHTML='<p style="color:var(--text-muted);font-size:0.85rem">Nenhum usuário cadastrado.</p>'; return; }
+  const colors=['#3b5bdb','#2f9e44','#e67700','#1971c2','#c2255c','#7048e8'];
+  grid.innerHTML = profiles.map((u,i)=>{
+    const cor = colors[i%colors.length];
+    const churchName = u.church ? (getChurchNameByCode(u.church)||u.church) : null;
+    return `<div class="user-card" onclick="openEditUser('${u.id}')" style="cursor:pointer">
+      <div class="user-card-avatar" style="background:${cor}">${(u.nome||u.login)[0].toUpperCase()}</div>
+      <div class="user-card-info">
+        <div class="user-card-name">${u.nome||u.login} <span style="font-size:0.72rem;font-weight:400;color:var(--text-muted)">@${u.login}</span></div>
+        ${churchName ? `<div class="user-card-church">🏛️ ${churchName}</div>` : '<div class="user-card-master">⭐ Master — acesso total</div>'}
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    </div>`;
+  }).join('');
+}
+
+function populateCfgChurches(selId) {
+  const sel = document.getElementById(selId);
+  if(!sel) return;
+  sel.innerHTML='<option value="">— Master (acesso total) —</option>';
+  (db.igrejas||[]).forEach(ig=>{
+    const o=document.createElement('option'); o.value=ig.codigo; o.textContent=ig.nome; sel.appendChild(o);
+  });
+}
+
+async function saveNewUser() {
+  const login = document.getElementById('cfg-new-user').value.trim().toLowerCase();
+  const senha = document.getElementById('cfg-new-pass').value;
+  const nome  = document.getElementById('cfg-new-nome').value.trim();
+  const church= document.getElementById('cfg-new-church').value;
+  if(!login){ toast('Informe o usuário.','err'); return; }
+  if(!senha || senha.length<4){ toast('Senha mínima de 4 caracteres.','err'); return; }
+  try {
+    await callAdminUsers('create', { login, senha, nome, church });
+    toast('Usuário cadastrado!','ok');
+    document.getElementById('cfg-new-user').value='';
+    document.getElementById('cfg-new-pass').value='';
+    document.getElementById('cfg-new-nome').value='';
+    document.getElementById('cfg-new-church').value='';
+    await loadUsers(); renderUsersGrid();
+  } catch(e) { toast(e.message || 'Erro ao cadastrar usuário.', 'err'); }
+}
+
+function openEditUser(id) {
+  const u = profiles.find(x => x.id === id);
+  if(!u) return;
+  document.getElementById('edit-user-idx').value = id;
+  document.getElementById('edit-user-login').value = u.login;
+  document.getElementById('edit-user-pass').value = '';
+  document.getElementById('edit-user-nome').value = u.nome || '';
+  populateCfgChurches('edit-user-church');
+  document.getElementById('edit-user-church').value = u.church || '';
+  document.getElementById('edit-user-title').textContent = 'Editar: ' + (u.nome || u.login);
+  document.getElementById('modal-edit-user').classList.add('open');
+}
+
+async function updateUser() {
+  const targetId = document.getElementById('edit-user-idx').value;
+  const login = document.getElementById('edit-user-login').value.trim().toLowerCase();
+  const newPass = document.getElementById('edit-user-pass').value;
+  const nome = document.getElementById('edit-user-nome').value.trim();
+  const church = document.getElementById('edit-user-church').value;
+  if(!login){ toast('Informe o usuário.','err'); return; }
+  try {
+    await callAdminUsers('update', { targetId, login, nome, church });
+    if(newPass) {
+      if(newPass.length < 4) { toast('Senha mínima de 4 caracteres.','err'); return; }
+      await callAdminUsers('updatePassword', { targetId, senha: newPass });
+    }
+    await loadUsers(); renderUsersGrid();
+    closeModal('modal-edit-user');
+    toast('Usuário atualizado!','ok');
+  } catch(e) { toast(e.message || 'Erro ao atualizar usuário.', 'err'); }
+}
+
+async function deleteUser() {
+  const targetId = document.getElementById('edit-user-idx').value;
+  if(!confirm('Excluir este usuário?')) return;
+  try {
+    await callAdminUsers('delete', { targetId });
+    await loadUsers(); renderUsersGrid();
+    closeModal('modal-edit-user');
+    toast('Usuário excluído.','ok');
+  } catch(e) { toast(e.message || 'Erro ao excluir usuário.', 'err'); }
+}
+
+// ═══════════════════════════════════════════════
+// BACKUP — Exportar / Importar JSON
+// ═══════════════════════════════════════════════
+function exportBackupJSON() {
+  try {
+    const payload = {
+      __app: 'PatrimonioIgreja',
+      __backupVersion: 2,
+      exportedAt: new Date().toISOString(),
+      igrejas: db.igrejas || [],
+      dependencias: db.dependencias || [],
+      bens: db.bens || [],
+      nextId: db.nextId || 1
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.href = url;
+    a.download = `backup-patrimonio-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('Backup exportado com sucesso.', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao exportar backup.', 'err');
+  }
+}
+
+function importBackupJSON(input) {
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if(!data || typeof data !== 'object') throw new Error('Arquivo inválido.');
+
+      const igrejas = Array.isArray(data.igrejas) ? data.igrejas : [];
+      const dependencias = Array.isArray(data.dependencias) ? data.dependencias : [];
+      const bens = Array.isArray(data.bens) ? data.bens : [];
+      const nextId = typeof data.nextId === 'number' ? data.nextId : (db.nextId || 1);
+
+      const totalItens = igrejas.length + dependencias.length + bens.length;
+      const confirmMsg = `Este backup contém ${igrejas.length} igreja(s), ${dependencias.length} dependência(s) e ${bens.length} bem(ns).\n\nIsso irá SUBSTITUIR os dados de igrejas/dependências/bens. Os usuários (login/senha) NÃO fazem parte deste backup — são gerenciados separadamente pelo Supabase Auth. Deseja continuar?`;
+      if(!confirm(confirmMsg)) { input.value = ''; return; }
+
+      db.igrejas = igrejas;
+      db.dependencias = dependencias;
+      db.bens = bens;
+      db.nextId = nextId;
+      window.db = db;
+
+      await saveDB();
+
+      if(typeof renderIgGrid === 'function') renderIgGrid();
+      if(typeof renderDepGrid === 'function') renderDepGrid();
+      if(typeof renderBens === 'function') renderBens();
+      if(typeof renderRel === 'function') renderRel();
+
+      toast(`Backup importado com sucesso (${totalItens} registro(s)).`, 'ok');
+    } catch(e) {
+      console.error(e);
+      toast('Erro ao importar backup: arquivo JSON inválido.', 'err');
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function init() {
+  // Aguarda o cliente Supabase estar disponível
+  let tries = 0;
+  while(!window._sb && tries < 60) { await new Promise(r=>setTimeout(r,100)); tries++; }
+
+  // Carrega dados do Supabase
+  await loadDB();
+  await loadUsers();
+
+  // Aviso apenas se não houver nenhum usuário cadastrado no banco
+  if(!profiles || profiles.length===0) {
+    console.warn('Nenhum usuário cadastrado ainda. O primeiro usuário criado pelo formulário "Novo Usuário" será automaticamente o master.');
+  }
+
+  // selectedChurch sempre usa db (mesma referência)
+
+  // Restaura a igreja (mantém selectedChurch para compatibilidade interna)
+  if(selectedChurch && !db.igrejas.find(x=>x.codigo===selectedChurch)) selectedChurch='';
+  if(!selectedChurch && db.igrejas.length) selectedChurch=db.igrejas[0].codigo;
+  impRefreshChurchSel();
+  refreshAll(); renderBens(); renderIgGrid(); renderDepGrid(); renderRel();
+  show('s-empty',true); show('s-notfound',false); show('s-found',false);
+  document.getElementById('bc-input').focus();
+
+  // Remove overlay de carregamento
+  const ov = document.getElementById('fb-loading');
+  if(ov) { ov.style.opacity='0'; ov.style.transition='opacity 0.3s'; setTimeout(()=>ov.remove(),300); }
+
+  // Marca DB como pronto e expõe funções para o listener em tempo real
+  window._dbReady = true;
+  if(window._exposeFns) window._exposeFns();
+
+  // Tenta restaurar uma sessão de login já ativa; senão mostra a tela de login
+  const restored = await restoreSession();
+  if(!restored) {
+    document.getElementById('login-screen').classList.add('show');
+    setTimeout(()=>document.getElementById('login-user').focus(), 300);
+  }
+}
+init();
+
+// ═══════════════════════════════════════════════
+// PWA — Registro do Service Worker + Prompt de instalação
+// ═══════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Falha ao registrar Service Worker:', e));
+  });
+}
+
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'flex';
+});
+
+function installPWA() {
+  const btn = document.getElementById('pwa-install-btn');
+  if (!_deferredInstallPrompt) return;
+  _deferredInstallPrompt.prompt();
+  _deferredInstallPrompt.userChoice.finally(() => {
+    _deferredInstallPrompt = null;
+    if (btn) btn.style.display = 'none';
+  });
+}
+
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'none';
+});
+</script>
+</body>
+</html>
