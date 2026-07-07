@@ -1528,7 +1528,7 @@ function showTab(id,el) {
   if(id==='importacao'){impRefreshChurchSel();}
   if(id==='config'){
     populateCfgChurches('cfg-new-church');
-    renderUsersGrid();
+    loadUsers().then(renderUsersGrid);
   }
 }
 function showSubTab(id,el) {
