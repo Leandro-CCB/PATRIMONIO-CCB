@@ -7,7 +7,7 @@
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#3b5bdb">
+<meta name="theme-color" content="#1F7AE8">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -16,35 +16,39 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Lora:ital,wght@0,600;1,400&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
   :root {
-    --bg: #f4f6fb;
+    /* Paleta oficial LMA Soluções */
+    --bg: #f4f7fb;
     --surface: #ffffff;
-    --surface2: #f0f3fa;
-    --border: #e2e7f0;
-    --border2: #d0d8ea;
-    --accent: #3b5bdb;
-    --accent-light: #eef1fd;
-    --accent2: #4c6ef5;
-    --text: #1a2035;
-    --text-muted: #7a8aab;
+    --surface2: #eef2f6;
+    --border: #eef2f6;
+    --border2: #dce3ec;
+    --accent: #1f7ae8;
+    --accent-light: #e8f1fd;
+    --accent2: #0d5cb6;
+    --accent-mid: #157fd8;
+    --accent-soft: #31c4f5;
+    --text: #263443;
+    --text-muted: #697786;
     --text-light: #a8b5cc;
-    --green: #2f9e44;
-    --green-bg: #ebfbee;
-    --red: #e03131;
-    --red-bg: #fff5f5;
-    --yellow: #e67700;
-    --yellow-bg: #fff9db;
-    --blue: #1971c2;
-    --shadow-sm: 0 1px 3px rgba(30,50,100,0.07), 0 1px 2px rgba(30,50,100,0.04);
-    --shadow: 0 4px 16px rgba(30,50,100,0.08), 0 1px 4px rgba(30,50,100,0.05);
-    --shadow-lg: 0 12px 40px rgba(30,50,100,0.12), 0 4px 12px rgba(30,50,100,0.06);
+    --green: #38c172;
+    --green-bg: #eafaf1;
+    --red: #f05454;
+    --red-bg: #fef0f0;
+    --yellow: #f4b63e;
+    --yellow-bg: #fef7e8;
+    --blue: #1f7ae8;
+    --lma-gradient: linear-gradient(135deg, #0d5cb6 0%, #157fd8 55%, #31c4f5 100%);
+    --shadow-sm: 0 1px 3px rgba(15,23,42,0.05), 0 1px 2px rgba(15,23,42,0.04);
+    --shadow: 0 8px 24px rgba(15,23,42,0.06);
+    --shadow-lg: 0 12px 40px rgba(15,23,42,0.10), 0 4px 12px rgba(15,23,42,0.06);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { overflow-x: hidden; max-width: 100%; }
-  body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
   /* ── HEADER ── */
   header {
@@ -58,13 +62,13 @@
   .logo { display: flex; align-items: center; gap: 12px; }
   .logo-icon {
     width: 36px; height: 36px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    background: var(--lma-gradient);
     border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     font-size: 17px; color: white;
     box-shadow: 0 2px 8px rgba(59,91,219,0.35);
   }
-  .logo h1 { font-family: 'Lora', serif; font-size: 1.15rem; color: var(--text); font-weight: 600; }
+  .logo h1 { font-family: 'Inter', sans-serif; font-size: 1.15rem; color: var(--text); font-weight: 600; }
   .logo span { color: var(--accent); }
 
   /* Church selector in header */
@@ -81,7 +85,7 @@
     background: var(--accent-light);
     border: 1.5px solid #c5d0f8;
     border-radius: 10px;
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 0.85rem; font-weight: 600;
     color: var(--accent); cursor: pointer;
     transition: all 0.15s; min-width: 220px;
@@ -101,7 +105,7 @@
   .church-search-wrap { padding: 10px; border-bottom: 1px solid var(--border); }
   .church-search-input {
     width: 100%; padding: 8px 12px; border: 1.5px solid var(--border2);
-    border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif;
+    border-radius: 8px; font-family: 'Inter', sans-serif;
     font-size: 0.83rem; outline: none; background: var(--bg);
     transition: border-color 0.15s;
   }
@@ -128,7 +132,7 @@
   .tab {
     padding: 12px 20px; font-size: 0.83rem; font-weight: 500;
     color: var(--text-muted); cursor: pointer; border: none; background: none;
-    font-family: 'Plus Jakarta Sans', sans-serif; border-bottom: 2.5px solid transparent;
+    font-family: 'Inter', sans-serif; border-bottom: 2.5px solid transparent;
     transition: all 0.15s; display: flex; align-items: center; gap: 7px;
     letter-spacing: 0.01em;
   }
@@ -146,7 +150,7 @@
 
   /* ── PAGE HEADER ── */
   .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; }
-  .page-header-left h2 { font-family: 'Lora', serif; font-size: 1.5rem; font-weight: 600; color: var(--text); }
+  .page-header-left h2 { font-family: 'Inter', sans-serif; font-size: 1.5rem; font-weight: 600; color: var(--text); }
   .page-header-left p { color: var(--text-muted); font-size: 0.82rem; margin-top: 3px; }
 
   /* ── SCANNER ── */
@@ -163,8 +167,8 @@
   .scan-cursor { width: 3px; height: 20px; background: var(--accent); border-radius: 2px; animation: blink 1s step-end infinite; flex-shrink: 0; }
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
   .scan-input-row input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-family: monospace; font-size: 1.05rem; letter-spacing: 0.05em; }
-  .scan-input-row input::placeholder { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; color: var(--text-light); letter-spacing: 0; }
-  .live-sug { display: none; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .scan-input-row input::placeholder { font-family: 'Inter', sans-serif; font-size: 0.85rem; color: var(--text-light); letter-spacing: 0; }
+  .live-sug { display: none; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 320px; overflow-y: auto; padding-right: 2px; }
   .sug-item { padding: 7px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center; transition: all 0.1s; }
   .sug-item:hover { background: var(--accent-light); border-color: #c5d0f8; color: var(--accent); }
   .result-area { padding: 1.4rem; }
@@ -193,9 +197,9 @@
   .dep-chip.current { border-color: #1971c2; color: var(--blue); }
   .dep-chip.current.sel { background: #e7f5ff; }
   .dep-custom { display: flex; gap: 6px; }
-  .dep-custom input { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.8rem; outline: none; transition: border-color 0.15s; }
+  .dep-custom input { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.8rem; outline: none; transition: border-color 0.15s; }
   .dep-custom input:focus { border-color: var(--accent); }
-  .obs-section textarea { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; resize: vertical; min-height: 60px; outline: none; transition: border-color 0.15s; }
+  .obs-section textarea { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 12px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.82rem; resize: vertical; min-height: 60px; outline: none; transition: border-color 0.15s; }
   .obs-section textarea:focus { border-color: var(--accent); }
   .action-btns { display: flex; gap: 8px; margin-top: 1rem; }
 
@@ -212,7 +216,7 @@
   .prog-dot { width: 8px; height: 8px; border-radius: 50%; }
   .dep-ctx { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
   .dep-ctx-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
-  .dep-ctx select { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; outline: none; }
+  .dep-ctx select { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.82rem; outline: none; }
   .dep-ctx-hint { font-size: 0.68rem; color: var(--text-light); margin-top: 5px; }
 
   /* ── BENS TAB ── */
@@ -229,11 +233,11 @@
     transition: border-color 0.15s;
   }
   .search-box:focus-within { border-color: var(--accent); }
-  .search-box input { background: none; border: none; outline: none; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; width: 100%; }
+  .search-box input { background: none; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.85rem; width: 100%; }
   .search-icon { color: var(--text-muted); font-size: 0.9rem; }
   .filter-select {
     background: var(--bg); border: 1.5px solid var(--border); border-radius: 9px;
-    padding: 7px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
+    padding: 7px 12px; color: var(--text); font-family: 'Inter', sans-serif;
     font-size: 0.82rem; outline: none; cursor: pointer; transition: border-color 0.15s;
   }
   .filter-select:focus { border-color: var(--accent); }
@@ -263,7 +267,7 @@
 
   .pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--text-muted); background: var(--surface2); }
   .pag-btns { display: flex; gap: 4px; }
-  .pag-btns button { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.75rem; transition: all 0.15s; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500; }
+  .pag-btns button { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.75rem; transition: all 0.15s; font-family: 'Inter', sans-serif; font-weight: 500; }
   .pag-btns button:hover, .pag-btns button.active { background: var(--accent); color: white; border-color: var(--accent); }
 
   /* TOTALS BAR */
@@ -277,7 +281,7 @@
   .total-card .tc-val.blue { color: var(--accent); }
 
   /* BUTTONS */
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 9px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s; white-space: nowrap; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 18px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; font-family: 'Inter', sans-serif; transition: all 0.15s; white-space: nowrap; }
   .btn-primary { background: var(--accent); color: white; box-shadow: 0 2px 8px rgba(59,91,219,0.3); }
   .btn-primary:hover { background: var(--accent2); box-shadow: 0 4px 12px rgba(59,91,219,0.4); transform: translateY(-1px); }
   .btn-confirm { background: var(--green); color: white; flex: 1; justify-content: center; font-size: 0.88rem; box-shadow: 0 2px 8px rgba(47,158,68,0.3); }
@@ -299,14 +303,14 @@
   .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: slideUp 0.2s ease; }
   @keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   .modal-header { padding: 1.4rem 1.75rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-  .modal-header h3 { font-family: 'Lora', serif; font-size: 1.15rem; font-weight: 600; }
+  .modal-header h3 { font-family: 'Inter', sans-serif; font-size: 1.15rem; font-weight: 600; }
   .modal-body { padding: 1.75rem; }
   .modal-footer { padding: 1.1rem 1.75rem; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface2); border-radius: 0 0 18px 18px; }
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .form-full { grid-column: 1 / -1; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
-  input[type=text], input[type=date], input[type=number], select, textarea { background: var(--bg); border: 1.5px solid var(--border); border-radius: 9px; padding: 9px 12px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; transition: border-color 0.15s, box-shadow 0.15s; outline: none; }
+  input[type=text], input[type=date], input[type=number], select, textarea { background: var(--bg); border: 1.5px solid var(--border); border-radius: 9px; padding: 9px 12px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.85rem; transition: border-color 0.15s, box-shadow 0.15s; outline: none; }
   input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.1); }
   select option { background: var(--surface); }
 
@@ -326,7 +330,7 @@
 
   /* ── CADASTROS TABS ── */
   .sub-tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; background: var(--surface2); padding: 4px; border-radius: 12px; width: fit-content; border: 1px solid var(--border); }
-  .sub-tab { padding: 7px 18px; border-radius: 9px; font-size: 0.82rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s; }
+  .sub-tab { padding: 7px 18px; border-radius: 9px; font-size: 0.82rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: 'Inter', sans-serif; transition: all 0.15s; }
   .sub-tab.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
   .sub-tab:hover:not(.active) { color: var(--text); }
 
@@ -343,7 +347,7 @@
   .entity-card-body strong { color: var(--text); font-weight: 600; }
 
   .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
-  .section-header h3 { font-family: 'Lora', serif; font-size: 1.1rem; font-weight: 600; }
+  .section-header h3 { font-family: 'Inter', sans-serif; font-size: 1.1rem; font-weight: 600; }
   .section-header p { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
 
   /* EMPTY STATE */
@@ -361,7 +365,7 @@
   /* ── IMPORTAÇÃO ── */
   .import-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
   .import-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; box-shadow: var(--shadow); }
-  .import-panel h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; margin-bottom: 1.25rem; }
+  .import-panel h3 { font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 600; margin-bottom: 1.25rem; }
 
   .drop-zone {
     border: 2px dashed var(--border2); border-radius: 14px; padding: 2.5rem 1.5rem;
@@ -390,7 +394,7 @@
 
   .imp-preview-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
   .imp-preview-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface2); }
-  .imp-preview-header h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; }
+  .imp-preview-header h3 { font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 600; }
   .imp-preview-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
   .imp-preview-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; min-width: 900px; }
   .imp-preview-table thead th { background: var(--accent); color: white; padding: 9px 12px; text-align: left; font-weight: 700; font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.06em; position: sticky; top: 0; z-index: 1; }
@@ -410,7 +414,7 @@
 
   .imp-log { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-sm); }
   .imp-log-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); background: var(--surface2); display: flex; align-items: center; justify-content: space-between; }
-  .imp-log-header h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; }
+  .imp-log-header h3 { font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 600; }
   .imp-log-body { max-height: 200px; overflow-y: auto; padding: 0.75rem; }
   .log-item { display: flex; align-items: flex-start; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 0.78rem; margin-bottom: 3px; }
   .log-item.log-ok { background: var(--green-bg); color: var(--green); }
@@ -424,7 +428,7 @@
     display: inline-flex; align-items: center; gap: 6px;
     padding: 7px 14px; border-radius: 9px;
     background: var(--surface2); border: 1.5px solid var(--border2);
-    color: var(--text-muted); font-family: 'Plus Jakarta Sans', sans-serif;
+    color: var(--text-muted); font-family: 'Inter', sans-serif;
     font-size: 0.82rem; font-weight: 600; cursor: pointer;
     transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
   }
@@ -454,7 +458,7 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
   }
-  .cam-header h3 { font-family: 'Lora', serif; font-size: 1rem; font-weight: 600; }
+  .cam-header h3 { font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 600; }
   .cam-close {
     width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid var(--border);
     background: var(--surface2); cursor: pointer; font-size: 1rem;
@@ -520,7 +524,7 @@
   #cam-sel {
     width: 100%; background: var(--bg); border: 1.5px solid var(--border2);
     border-radius: 8px; padding: 7px 12px; color: var(--text);
-    font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; outline: none;
+    font-family: 'Inter', sans-serif; font-size: 0.82rem; outline: none;
   }
 
   .scan-input-row .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 7px; }
@@ -584,25 +588,25 @@
   .login-logo { text-align: center; margin-bottom: 2rem; }
   .login-logo .login-icon {
     width: 60px; height: 60px; margin: 0 auto 12px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    background: var(--lma-gradient);
     border-radius: 16px; display: flex; align-items: center; justify-content: center;
     font-size: 26px; color: white; box-shadow: 0 4px 16px rgba(59,91,219,0.45);
   }
-  .login-logo h2 { font-family: 'Lora', serif; font-size: 1.4rem; color: var(--text); }
+  .login-logo h2 { font-family: 'Inter', sans-serif; font-size: 1.4rem; color: var(--text); }
   .login-logo h2 span { color: var(--accent); }
   .login-logo p { color: var(--text-muted); font-size: 0.82rem; margin-top: 4px; }
   .login-field { margin-bottom: 1rem; }
   .login-field label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 7px; }
   .login-field input {
     width: 100%; padding: 10px 14px; border: 1.5px solid var(--border);
-    border-radius: 10px; font-family: 'Plus Jakarta Sans', sans-serif;
+    border-radius: 10px; font-family: 'Inter', sans-serif;
     font-size: 0.9rem; color: var(--text); outline: none; background: var(--bg);
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   .login-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.12); }
   .login-error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(224,49,49,0.3); border-radius: 9px; padding: 10px 14px; font-size: 0.82rem; font-weight: 600; margin-bottom: 1rem; display: none; }
   .login-error.show { display: block; }
-  .btn-login { width: 100%; padding: 11px; background: var(--accent); color: white; border: none; border-radius: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.9rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(59,91,219,0.35); transition: all 0.15s; letter-spacing: 0.01em; }
+  .btn-login { width: 100%; padding: 11px; background: var(--accent); color: white; border: none; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 0.9rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(59,91,219,0.35); transition: all 0.15s; letter-spacing: 0.01em; }
   .btn-login:hover { background: var(--accent2); transform: translateY(-1px); }
 
   /* ── USER INFO in header ── */
@@ -611,12 +615,12 @@
   .user-avatar { width: 28px; height: 28px; background: linear-gradient(135deg,var(--accent),var(--accent2)); border-radius: 8px; display:flex;align-items:center;justify-content:center;font-size:12px;color:white;font-weight:700; }
   .user-name { font-size: 0.8rem; font-weight: 600; color: var(--text); }
   .user-role { font-size: 0.68rem; color: var(--text-muted); }
-  .btn-logout { background: none; border: 1.5px solid var(--border); border-radius: 8px; padding: 6px 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+  .btn-logout { background: none; border: 1.5px solid var(--border); border-radius: 8px; padding: 6px 12px; font-family: 'Inter', sans-serif; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
   .btn-logout:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
 
   /* ── CONFIGURAÇÕES TAB ── */
   .cfg-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow-sm); }
-  .cfg-section h3 { font-family: 'Lora', serif; font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+  .cfg-section h3 { font-family: 'Inter', sans-serif; font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
   .cfg-section > p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem; }
   .users-grid { display: flex; flex-direction: column; gap: 10px; }
   .user-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; transition: border-color 0.15s; }
@@ -630,7 +634,7 @@
   .cfg-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   .cfg-form-row.single { grid-template-columns: 1fr; }
   .cfg-field label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
-  .cfg-field input, .cfg-field select { width: 100%; padding: 9px 13px; border: 1.5px solid var(--border); border-radius: 9px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; color: var(--text); outline: none; background: var(--bg); transition: border-color 0.15s; }
+  .cfg-field input, .cfg-field select { width: 100%; padding: 9px 13px; border: 1.5px solid var(--border); border-radius: 9px; font-family: 'Inter', sans-serif; font-size: 0.85rem; color: var(--text); outline: none; background: var(--bg); transition: border-color 0.15s; }
   .cfg-field input:focus, .cfg-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,0.1); }
   .cfg-add-bar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.25rem; padding: 1.25rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; }
   .cfg-add-bar .cfg-field { flex: 1; min-width: 140px; }
@@ -668,7 +672,7 @@
     </div>
     <h1>Patrimônio<span>Igreja</span></h1>
   </div>
-  <button id="pwa-install-btn" onclick="installPWA()" style="display:none;align-items:center;gap:6px;padding:7px 14px;background:var(--accent-light);border:1.5px solid #c5d0f8;border-radius:10px;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.8rem;font-weight:600;color:var(--accent);cursor:pointer">
+  <button id="pwa-install-btn" onclick="installPWA()" style="display:none;align-items:center;gap:6px;padding:7px 14px;background:var(--accent-light);border:1.5px solid #c5d0f8;border-radius:10px;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:600;color:var(--accent);cursor:pointer">
     ⬇️ Instalar App
   </button>
   <!-- church selector removed -->
@@ -787,7 +791,7 @@
       <div class="prog-title">Progresso do Inventário</div>
       <div style="margin-bottom:1rem">
         <div class="dep-ctx-label" style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:6px">Igreja</div>
-        <select id="inv-church-sel" onchange="selectInvChurch(this.value)" style="width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;outline:none;">
+        <select id="inv-church-sel" onchange="selectInvChurch(this.value)" style="width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.82rem;outline:none;">
           <option value="">Todas as igrejas</option>
         </select>
       </div>
@@ -995,7 +999,7 @@
       <!-- ESTADO VAZIO -->
       <div id="imp-empty-state" class="import-panel" style="text-align:center;padding:3rem 2rem">
         <div style="font-size:3rem;margin-bottom:1rem;opacity:0.35">📊</div>
-        <h3 style="font-family:'Lora',serif;font-weight:600;margin-bottom:6px">Nenhum arquivo carregado</h3>
+        <h3 style="font-family:'Inter',sans-serif;font-weight:600;margin-bottom:6px">Nenhum arquivo carregado</h3>
         <p style="color:var(--text-muted);font-size:0.82rem">Selecione o arquivo XLS para ver a pré-visualização dos dados antes de importar.</p>
         <div style="margin-top:1.5rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1rem;text-align:left">
           <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:8px">Colunas esperadas no arquivo</div>
@@ -1060,7 +1064,7 @@
   <div class="page-header">
     <div class="page-header-left"><h2>Relatório do Inventário</h2><p>Resumo completo da verificação</p></div>
     <div style="display:flex;gap:8px;align-items:center">
-      <select id="rel-church-sel" onchange="selectRelChurch(this.value)" style="background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:7px 14px;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;outline:none;cursor:pointer;min-width:200px;">
+      <select id="rel-church-sel" onchange="selectRelChurch(this.value)" style="background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:7px 14px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.82rem;outline:none;cursor:pointer;min-width:200px;">
         <option value="">Todas as igrejas</option>
       </select>
       <button class="btn btn-primary btn-sm" onclick="exportCSV()">
@@ -1388,7 +1392,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function() {
   const overlay = document.createElement('div');
   overlay.id = 'fb-loading';
-  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg,#f4f6fb);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:Plus Jakarta Sans,sans-serif';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg,#f4f6fb);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:Inter,sans-serif';
   overlay.innerHTML = `
     <div style="width:44px;height:44px;border:3px solid #e2e7f0;border-top-color:#3b5bdb;border-radius:50%;animation:spin 0.8s linear infinite"></div>
     <p style="color:#7a8aab;font-size:0.85rem;font-weight:500">Conectando ao banco de dados...</p>
@@ -1665,9 +1669,10 @@ function bcLive(v) {
   if(!v||v.length<2){sug.style.display='none';return;}
   const _churchFilter = invChurch || (currentUser && !currentUser.master ? currentUser.church : '');
   const pool=_churchFilter?db.bens.filter(b=>b.localidade===_churchFilter):db.bens;
-  const hits=pool.filter(b=>b.codigo.includes(v)||b.barcode.includes(v)||(b.nome&&b.nome.toLowerCase().includes(v.toLowerCase()))).slice(0,5);
+  const allHits=pool.filter(b=>b.codigo.includes(v)||b.barcode.includes(v)||(b.nome&&b.nome.toLowerCase().includes(v.toLowerCase())));
+  const hits=allHits.slice(0,12);
   if(!hits.length){sug.style.display='none';return;}
-  sug.innerHTML=hits.map(b=>{
+  let html=hits.map(b=>{
     const igNome=db.igrejas.find(x=>x.codigo===b.localidade)?.nome||b.localidade||'';
     return `<div class="sug-item" onclick="selectSug('${b.barcode}')">
       <span>${b.nome}</span>
@@ -1677,6 +1682,10 @@ function bcLive(v) {
       </span>
     </div>`;
   }).join('');
+  if(allHits.length>hits.length){
+    html += `<div style="text-align:center;padding:6px;font-size:0.72rem;color:var(--text-muted)">+${allHits.length-hits.length} resultado(s) — refine a busca para ver mais</div>`;
+  }
+  sug.innerHTML=html;
   sug.style.display='flex';
 }
 function selectSug(bc) { document.getElementById('bc-input').value=bc; document.getElementById('live-sug').style.display='none'; doScan(); }
